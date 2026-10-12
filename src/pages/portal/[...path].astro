@@ -1,0 +1,21 @@
+---
+/**
+ * Every `/portal/*` URL renders this page; the TanStack Router app inside it
+ * picks the screen in the browser. The brand comes from the server, like on
+ * every other page.
+ */
+import Base from '../../layouts/Base.astro';
+import {getSite} from '../../lib/api';
+import PortalApp from '../../portal/PortalApp';
+
+export const prerender = false;
+
+const site = await getSite(Astro.url);
+---
+
+<Base site={site} title="Portal">
+  <main class="wrap section">
+    <PortalApp client:only="react" />
+    <noscript><p class="lede">The portal needs JavaScript.</p></noscript>
+  </main>
+</Base>

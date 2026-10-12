@@ -1,0 +1,80 @@
+---
+import NotFound from '../../components/NotFound.astro';
+import Base from '../../layouts/Base.astro';
+import {getPost, getSite} from '../../lib/api';
+import {formatDate, initials, preview, readingMinutes} from '../../lib/format';
+
+const slug = Astro.params.slug ?? '';
+const [site, post] = await Promise.all([getSite(Astro.url), getPost(Astro.url, slug)]);
+
+// An unknown or unpublished slug under /blog is ours to answer, with a real 404.
+if (!post) Astro.response.status = 404;
+
+// `backgroundImage` (not the `background` shorthand, which would reset the
+// colour). Quoted so a url containing `(` or `)` cannot end the css function.
+const heroStyle = post?.coverUrl
+  ? `background-image: url("${post.coverUrl.replace(/"/g, '%22')}")`
+  : undefined;
+---
+
+{
+  post ? (
+    <Base
+      site={site}
+      title={post.title}
+      description={preview(post.excerpt, post.content)}
+      image={post.coverUrl}>
+      <main>
+        <header class="post-hero" style={heroStyle}>
+          <div class="wrap center post-hero-inner">
+            <h1>{post.title}</h1>
+            <p class="post-meta">
+              {post.authors.map(author => (
+                <span class="author">
+                  {author.avatar ? (
+                    <img src={author.avatar} alt="" width="24" height="24" />
+                  ) : (
+                    <span class="avatar-fallback" aria-hidden="true">
+                      {initials(author.name)}
+                    </span>
+                  )}
+                  {/* Name only. A member's email is never shown. */}
+                  {author.name}
+                </span>
+              ))}
+              {post.publishedAt && <span>{formatDate(post.publishedAt)}</span>}
+              <span>{readingMinutes(post.content)} minute read</span>
+            </p>
+          </div>
+        </header>
+
+        <article class="wrap narrow section">
+          {/*
+            Rendered as HTML, the same as the community's own blog page: rich
+            text written by the community's blog admins in the platform editor.
+          */}
+          <div class="prose" set:html={post.content} />
+
+          {(post.categories.length > 0 || post.tags.length > 0) && (
+            <p class="terms">
+              {post.categories.map(category => (
+                <span class="chip">{category.name}</span>
+              ))}
+              {post.tags.map(tag => (
+                <span class="chip chip-tag">#{tag.name}</span>
+              ))}
+            </p>
+          )}
+
+          <p class="section">
+            <a href="/blog">← All posts</a>
+          </p>
+        </article>
+      </main>
+    </Base>
+  ) : (
+    <Base site={site} title="Page not found">
+      <NotFound site={site} />
+    </Base>
+  )
+}

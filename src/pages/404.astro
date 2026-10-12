@@ -1,0 +1,15 @@
+---
+/**
+ * Any address on the site that matches no page. Rendered on request (so it
+ * shows the brand) with a 404 status.
+ */
+import NotFound from '../components/NotFound.astro';
+import Base from '../layouts/Base.astro';
+import {getSite} from '../lib/api';
+
+const site = await getSite(Astro.url);
+---
+
+<Base site={site} title="Page not found">
+  <NotFound site={site} />
+</Base>

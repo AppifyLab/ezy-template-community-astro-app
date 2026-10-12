@@ -1,0 +1,29 @@
+// The Site Database's schema (Prisma ORM 7). Change it, then run
+// `npx prisma migrate dev --name <what-changed>` against the Preview Database
+// and wrap the new migration.sql in BEGIN; … COMMIT; (see AGENTS.md).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  // The client runs in the Cloudflare Workers runtime, never in Node.
+  runtime  = "workerd"
+}
+
+// The connection string is NOT here: prisma.config.ts reads DATABASE_URL from
+// the environment, which the platform sets (the Build never gets one).
+datasource db {
+  provider = "postgresql"
+}
+
+/// A note anyone can leave from the portal (`/portal/notes`). Replace it with
+/// your own tables.
+model Note {
+  id        Int      @id @default(autoincrement())
+  /// Shown as written. Never store a member's email address here.
+  body      String   @db.VarChar(500)
+  author    String?  @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("notes")
+}

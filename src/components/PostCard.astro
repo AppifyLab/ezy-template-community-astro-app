@@ -1,0 +1,26 @@
+---
+/** The default card: cover, title, excerpt, date. Used by the grids. */
+import type {PostSummary} from '../lib/api';
+import {formatDate, preview} from '../lib/format';
+
+interface Props {
+  post: PostSummary;
+}
+
+const {post} = Astro.props;
+---
+
+<a class="post-card" href={`/blog/${encodeURIComponent(post.slug)}`}>
+  {
+    post.coverUrl ? (
+      <img class="cover" src={post.coverUrl} alt="" loading="lazy" />
+    ) : (
+      <span class="cover cover-empty" />
+    )
+  }
+  <div class="post-card-body">
+    <h3>{post.title}</h3>
+    <p class="muted small">{preview(post.excerpt, undefined, 110)}</p>
+    <p class="meta">{formatDate(post.publishedAt)}</p>
+  </div>
+</a>

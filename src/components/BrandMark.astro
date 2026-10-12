@@ -1,0 +1,30 @@
+---
+/**
+ * The community's mark: logo when it has one, monogram fallback otherwise.
+ * `initial-data` carries no description and no brand colour, so name + logo is
+ * the whole brand.
+ */
+import type {Site} from '../lib/api';
+import {initials} from '../lib/format';
+
+interface Props {
+  site: Site | null;
+  size?: number;
+}
+
+const {site, size = 32} = Astro.props;
+const name = site?.name ?? 'Community';
+---
+
+{
+  site?.logo ? (
+    <img class="brand-logo" src={site.logo} alt={name} height={size} style={`height: ${size}px`} />
+  ) : (
+    <span
+      class="brand-monogram"
+      style={`width: ${size}px; height: ${size}px; font-size: ${size * 0.4}px`}
+      aria-hidden="true">
+      {initials(name)}
+    </span>
+  )
+}

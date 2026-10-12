@@ -1,0 +1,58 @@
+---
+import BrandMark from '../components/BrandMark.astro';
+import PostCard from '../components/PostCard.astro';
+import Base from '../layouts/Base.astro';
+import {getSite, listPosts} from '../lib/api';
+
+const [site, {posts}] = await Promise.all([
+  getSite(Astro.url),
+  listPosts(Astro.url, {perPage: 3}),
+]);
+const name = site?.name ?? 'Community';
+---
+
+<Base site={site}>
+  <main>
+    <section class="hero">
+      <div class="wrap center">
+        <BrandMark site={site} size={72} />
+        <h1>{name}</h1>
+        {/* `initial-data` carries no description, so this line IS the tagline. */}
+        <p class="lede">Welcome to {name}</p>
+        {/* Join, Log in and the feed are your community app: plain links, always. */}
+        <div class="actions">
+          <a class="button" href="/join">Join</a>
+          <a class="button ghost" href="/login">Log in</a>
+          <a class="button link" href="/feeds">Open community →</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="wrap section">
+      <div class="section-head">
+        <h2>Portal</h2>
+        {/* An Astro page linking into the React app: a plain link. */}
+        <a href="/portal">Open the portal →</a>
+      </div>
+      <p class="muted">
+        Your own app inside this site: a React portal backed by your Site API and Site Database.
+      </p>
+    </section>
+
+    {
+      posts.length > 0 && (
+        <section class="wrap section">
+          <div class="section-head">
+            <h2>Latest from the blog</h2>
+            <a href="/blog">All posts →</a>
+          </div>
+          <div class="grid grid-3">
+            {posts.slice(0, 3).map(post => (
+              <PostCard post={post} />
+            ))}
+          </div>
+        </section>
+      )
+    }
+  </main>
+</Base>

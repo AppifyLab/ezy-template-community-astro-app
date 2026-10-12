@@ -1,0 +1,64 @@
+---
+/**
+ * Header, footer and <head> for every page. The page fetches the brand (`site`)
+ * and passes it in, so the layout never makes an API call of its own.
+ */
+import '../styles/global.css';
+
+import BrandMark from '../components/BrandMark.astro';
+import type {Site} from '../lib/api';
+
+interface Props {
+  site: Site | null;
+  /** The page's own name; the tab shows "<title> · <community>". Omit on home. */
+  title?: string;
+  description?: string;
+  /** Extra <head> tags, e.g. og:image on a post. */
+  image?: string | null;
+}
+
+const {site, title, description, image} = Astro.props;
+const name = site?.name ?? 'Community';
+const fullTitle = title ? `${title} · ${name}` : name;
+const path = Astro.url.pathname;
+const active = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    {description && <meta name="description" content={description} />}
+    {title && <meta property="og:title" content={title} />}
+    {image && <meta property="og:image" content={image} />}
+    {site?.favIcon && <link rel="icon" href={site.favIcon} />}
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="wrap site-header-inner">
+        <a href="/" class="brand">
+          <BrandMark site={site} />
+          <span class="brand-name">{name}</span>
+        </a>
+        <nav class="site-nav">
+          <a href="/" class:list={{active: active('/')}}>Home</a>
+          <a href="/blog" class:list={{active: active('/blog')}}>Blog</a>
+          <a href="/portal" class:list={{active: active('/portal')}}>Portal</a>
+          {/* /feeds is your community app, on this same address: a plain link. */}
+          <a href="/feeds">Community</a>
+        </nav>
+      </div>
+    </header>
+
+    <slot />
+
+    <footer class="site-footer">
+      <div class="wrap site-footer-inner">
+        <span>© {new Date().getUTCFullYear()} {name}</span>
+        <span class="muted">Powered by EzyCommunity</span>
+      </div>
+    </footer>
+  </body>
+</html>

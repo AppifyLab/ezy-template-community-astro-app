@@ -1,0 +1,47 @@
+---
+import PostCard from '../../components/PostCard.astro';
+import Base from '../../layouts/Base.astro';
+import {getSite, listPosts} from '../../lib/api';
+
+const PER_PAGE = 9;
+const page = Math.max(1, Number(Astro.url.searchParams.get('page')) || 1);
+
+const [site, {posts, meta}] = await Promise.all([
+  getSite(Astro.url),
+  listPosts(Astro.url, {page, perPage: PER_PAGE}),
+]);
+const pageHref = (n: number) => (n === 1 ? '/blog' : `/blog?page=${n}`);
+---
+
+<Base site={site} title="Blog">
+  <main class="wrap section">
+    <p class="eyebrow">{site?.name ?? 'Community'}</p>
+    <h1>Blog</h1>
+
+    {
+      posts.length === 0 ? (
+        <p class="lede">No posts published yet.</p>
+      ) : (
+        <div class="grid grid-3">
+          {posts.map(post => (
+            <PostCard post={post} />
+          ))}
+        </div>
+      )
+    }
+
+    {
+      meta.lastPage > 1 && (
+        <nav class="pager">
+          {meta.currentPage > 1 && <a href={pageHref(meta.currentPage - 1)}>← Newer</a>}
+          <span class="muted small">
+            Page {meta.currentPage} of {meta.lastPage}
+          </span>
+          {meta.currentPage < meta.lastPage && (
+            <a href={pageHref(meta.currentPage + 1)}>Older →</a>
+          )}
+        </nav>
+      )
+    }
+  </main>
+</Base>
