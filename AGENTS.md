@@ -64,8 +64,11 @@ EzyCommunity App and never reaches this Worker — link to those with a plain
 - Errors are JSON `{error, message}`; the `notFound` and `onError` handlers
   stay. `csrf()` stays on unless a route is deliberately cross-site (a webhook).
 - Validate every input (`hono/validator`) and select columns explicitly.
-- Pages call it in-process: `hc<AppType>(url, {fetch: app.request})` — no
-  network hop.
+- Pages call it in-process: `hc<AppType>(url, {fetch: app.request})` or
+  `app.request(path)` — no network hop. Never `fetch()` this site's own
+  hostname for `/site-api/…` or a page: deployed, that request reaches the
+  EzyCommunity App (a 404), never this Worker — it only works on your own
+  machine. Server fetches of `/api/…` are fine.
 
 ## Secrets and the network
 
