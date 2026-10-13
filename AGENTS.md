@@ -15,6 +15,21 @@ Every other path on the hostname (`/login`, `/join`, `/feeds`, `/dashboard`,
 EzyCommunity App and never reaches this Worker — link to those with a plain
 `<a href>`.
 
+## Current platform rules (read first)
+
+This starter's notes are frozen at its tag; the platform's rules are not. Before
+changing anything, fetch the live rules for this site and follow them over this
+file:
+
+- `https://<your site's hostname>/api/public/site/v1/agent-docs` — the core rules
+  and the list of topic docs
+- `https://<your site's hostname>/api/public/site/v1/agent-docs/<topic>.md` — read
+  the topic that fits the work (e.g. `auth.md`, `public-api.md`,
+  `community-key.md`, `uploads.md`, `site-database.md`); `changes.md` lists what
+  is new.
+
+Inside the EzyCommunity editor the same docs are at `/opt/ezy/docs/<topic>.md`.
+
 ## Project
 
 - Keep the adapter `@astrojs/cloudflare` (14.x here). `@astrojs/node|vercel|netlify`
