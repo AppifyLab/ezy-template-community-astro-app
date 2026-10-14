@@ -1,42 +1,58 @@
 ---
 import BrandMark from '../components/BrandMark.astro';
 import PostCard from '../components/PostCard.astro';
+import {HOME, withName} from '../content/site';
 import Base from '../layouts/Base.astro';
-import {getSite, listPosts} from '../lib/api';
+import {listPosts} from '../lib/api';
+import {pageContext} from '../server/page';
 
-const [site, {posts}] = await Promise.all([
-  getSite(Astro.url),
+const [{site, viewer}, {posts}] = await Promise.all([
+  pageContext(Astro.request, Astro.response),
   listPosts(Astro.url, {perPage: 3}),
 ]);
 const name = site?.name ?? 'Community';
 ---
 
-<Base site={site}>
+<Base site={site} viewer={viewer}>
   <main>
     <section class="hero">
       <div class="wrap center">
         <BrandMark site={site} size={72} />
-        <h1>{name}</h1>
-        {/* `initial-data` carries no description, so this line IS the tagline. */}
-        <p class="lede">Welcome to {name}</p>
-        {/* Join, Log in and the feed are your community app: plain links, always. */}
+        <h1>{withName(HOME.tagline, name)}</h1>
+        <p class="lede">{withName(HOME.intro, name)}</p>
+        {/* Join, Log in and the feed are the community app: plain links, always. */}
         <div class="actions">
-          <a class="button" href="/join">Join</a>
-          <a class="button ghost" href="/login">Log in</a>
-          <a class="button link" href="/feeds">Open community →</a>
+          {
+            viewer.state === 'member' ? (
+              <>
+                <a class="button" href="/feeds">Open the community</a>
+                <a class="button ghost" href="/portal">Your portal</a>
+              </>
+            ) : viewer.state === 'applicant' ? (
+              <a class="button" href="/join">Finish joining</a>
+            ) : (
+              <>
+                <a class="button" href="/register">Join {name}</a>
+                <a class="button ghost" href="/login">Log in</a>
+              </>
+            )
+          }
         </div>
+        {viewer.state === 'member' && <p class="muted small">Welcome back, {viewer.name}.</p>}
       </div>
     </section>
 
     <section class="wrap section">
-      <div class="section-head">
-        <h2>Portal</h2>
-        {/* An Astro page linking into the React app: a plain link. */}
-        <a href="/portal">Open the portal →</a>
+      <div class="grid grid-3">
+        {
+          HOME.features.map(feature => (
+            <div class="card">
+              <h3>{feature.title}</h3>
+              <p class="muted">{feature.body}</p>
+            </div>
+          ))
+        }
       </div>
-      <p class="muted">
-        Your own app inside this site: a React portal backed by your Site API and Site Database.
-      </p>
     </section>
 
     {
@@ -54,5 +70,15 @@ const name = site?.name ?? 'Community';
         </section>
       )
     }
+
+    <section class="wrap section">
+      <div class="card cta">
+        <div>
+          <h2>Have a question?</h2>
+          <p class="muted">We read every message.</p>
+        </div>
+        <a class="button" href="/contact">Contact us</a>
+      </div>
+    </section>
   </main>
 </Base>

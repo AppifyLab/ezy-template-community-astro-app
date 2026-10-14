@@ -27,6 +27,7 @@
  * addresses are private — that is why `toAuthor` picks fields by name.
  */
 import {SELF_FETCH_HEADER, siteOrigin} from '../server/community';
+import {sanitizeHtml} from './sanitize';
 
 export interface Site {
   id: number;
@@ -61,7 +62,7 @@ export interface PostSummary {
 }
 
 export interface Post extends PostSummary {
-  /** Rich-text HTML authored in the community's blog editor. */
+  /** Rich-text HTML from the community's blog editor, already sanitized (`sanitize.ts`). */
   content: string;
 }
 
@@ -179,5 +180,6 @@ export async function getPost(requestUrl: URL, slug: string): Promise<Post | nul
     `/api/public/blog/post/${encodeURIComponent(slug)}/read`
   );
   if (!raw) return null;
-  return {...toSummary(raw), content: (raw.content as string) ?? ''};
+  // Sanitized HERE, so no page can render the raw editor HTML by mistake.
+  return {...toSummary(raw), content: sanitizeHtml((raw.content as string) ?? '')};
 }

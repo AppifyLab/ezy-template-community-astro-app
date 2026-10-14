@@ -22,7 +22,8 @@
     "astro": "^7.3.8",
     "hono": "^4.13.13",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "xss": "^1.0.15"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

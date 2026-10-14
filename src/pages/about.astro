@@ -1,0 +1,35 @@
+---
+import BrandMark from '../components/BrandMark.astro';
+import {ABOUT, withName} from '../content/site';
+import Base from '../layouts/Base.astro';
+import {pageContext} from '../server/page';
+
+const {site, viewer} = await pageContext(Astro.request, Astro.response);
+const name = site?.name ?? 'Community';
+---
+
+<Base site={site} viewer={viewer} title="About" description={withName(ABOUT.lede, name)}>
+  <main class="wrap narrow section">
+    <BrandMark site={site} size={56} />
+    <h1>{withName(ABOUT.title, name)}</h1>
+    <p class="lede">{withName(ABOUT.lede, name)}</p>
+    {
+      ABOUT.sections.map(section => (
+        <section class="about-section">
+          <h2>{section.heading}</h2>
+          <p>{withName(section.body, name)}</p>
+        </section>
+      ))
+    }
+    <div class="actions">
+      {
+        viewer.state === 'member' ? (
+          <a class="button" href="/feeds">Open the community</a>
+        ) : (
+          <a class="button" href="/register?redirectTo=%2Fabout">Join {name}</a>
+        )
+      }
+      <a class="button ghost" href="/contact">Contact us</a>
+    </div>
+  </main>
+</Base>

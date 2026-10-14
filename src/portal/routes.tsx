@@ -1,40 +1,102 @@
-import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
+import {useInfiniteQuery, useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
 import {createRootRoute, createRoute, Link, Outlet, useParams} from '@tanstack/react-router';
-import {type FormEvent, useState} from 'react';
+import {type ChangeEvent, type FormEvent, useState} from 'react';
 
+import {uploadFile} from '../lib/browser-session';
 import {api, read} from './api';
 
 /**
- * The portal's pages: a TanStack Router app under `/portal` (basepath), served
- * by `src/pages/portal/[...path].astro`, data through TanStack Query from the
- * Site API. Links INSIDE the portal use `<Link>`; links to the Astro pages or
- * to the community app (`/`, `/blog`, `/feeds`) are plain `<a href>`.
+ * The portal's screens: a TanStack Router app under `/portal` (basepath),
+ * served by `src/pages/portal/[...path].astro` (members only), with data from
+ * the Site API through TanStack Query. Links INSIDE the portal use `<Link>`;
+ * links to the Astro pages or the community app (`/`, `/blog`, `/feeds`) are
+ * plain `<a href>`.
  */
 
+type Viewer = {
+  state: 'member' | 'applicant' | 'returning' | 'guest';
+  profileId: number | null;
+  profileSlug: string | null;
+  name: string | null;
+  avatar: string | null;
+  roleSlug: string | null;
+};
 type Note = {id: number; body: string; author: string | null; createdAt: string};
+type Upload = {
+  id: number;
+  url: string;
+  originalName: string;
+  fileType: string;
+  fileSize: number;
+  createdAt: string;
+};
+type Member = {id: number; slug: string; name: string; avatar: string | null; role: string | null};
+type Message = {
+  id: number;
+  name: string;
+  email: string;
+  message: string;
+  profileId: number | null;
+  createdAt: string;
+};
 
 const when = (iso: string) =>
   new Intl.DateTimeFormat('en-GB', {dateStyle: 'medium', timeStyle: 'short'}).format(
     new Date(iso)
   );
 
+const bytes = (n: number) =>
+  n < 1024 ? `${n} B` : n < 1024 ** 2 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 ** 2).toFixed(1)} MB`;
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(word => word[0]?.toUpperCase() ?? '')
+    .join('');
+
 function ErrorNote({error}: {error: Error}) {
   return <p className="notice">{error.message}</p>;
 }
 
+function Avatar({name, src}: {name: string; src: string | null}) {
+  return src ? (
+    <img className="avatar" src={src} alt="" width={40} height={40} />
+  ) : (
+    <span className="avatar avatar-fallback" aria-hidden="true">
+      {initials(name)}
+    </span>
+  );
+}
+
+/** Who is signed in, and what the portal may show them. Shared by every screen. */
+function useMe() {
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: () => read<{viewer: Viewer; canReadInbox: boolean}>(api.me.$get()),
+    staleTime: 60_000,
+  });
+}
+
 const rootRoute = createRootRoute({
-  component: () => (
-    <div className="portal">
-      <nav className="portal-nav">
-        <Link to="/" activeOptions={{exact: true}}>
-          Overview
-        </Link>
-        <Link to="/notes">Notes</Link>
-        <Link to="/community">Community</Link>
-      </nav>
-      <Outlet />
-    </div>
-  ),
+  component: function Shell() {
+    const me = useMe();
+    return (
+      <div className="portal">
+        <nav className="portal-nav">
+          <Link to="/" activeOptions={{exact: true}}>
+            Overview
+          </Link>
+          <Link to="/uploads">My files</Link>
+          <Link to="/members">Members</Link>
+          {me.data?.canReadInbox && <Link to="/inbox">Inbox</Link>}
+          <Link to="/notes">Notes</Link>
+        </nav>
+        <Outlet />
+      </div>
+    );
+  },
   notFoundComponent: () => (
     <section>
       <h1>Not found</h1>
@@ -48,29 +110,246 @@ const overviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: function Overview() {
+    const me = useMe();
     const health = useQuery({
       queryKey: ['health'],
-      queryFn: () =>
-        read<{database: boolean; communityKey: boolean}>(api.health.$get()),
+      queryFn: () => read<{database: boolean; communityKey: boolean}>(api.health.$get()),
     });
+    const community = useQuery({
+      queryKey: ['community'],
+      queryFn: () =>
+        read<{community: {name: string; logo: string | null} | null}>(api.community.$get()),
+    });
+    const viewer = me.data?.viewer;
     return (
       <section>
         <p className="eyebrow">Portal</p>
-        <h1>Your app</h1>
+        {viewer && (
+          <div className="me">
+            <Avatar name={viewer.name ?? ''} src={viewer.avatar} />
+            <div>
+              <h1>Hi, {viewer.name}</h1>
+              {viewer.profileSlug && (
+                <a href={`/profile/${encodeURIComponent(viewer.profileSlug)}`}>
+                  Your community profile →
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+        {me.error && <ErrorNote error={me.error} />}
         <p className="lede">
-          A React app inside your site. It talks to your own backend at <code>/site-api</code>,
-          which stores data in your Site Database and reads your community as the Community.
+          Your space on this site. It runs on this site's own backend (<code>/site-api</code>),
+          which stores data in the Site Database and reads the community with the Community Key.
         </p>
+        <div className="grid grid-3">
+          <Link className="card link-card" to="/uploads">
+            <h3>My files</h3>
+            <p className="muted">Upload files to the community's storage.</p>
+          </Link>
+          <Link className="card link-card" to="/members">
+            <h3>Members</h3>
+            <p className="muted">Who is in {community.data?.community?.name ?? 'the community'}.</p>
+          </Link>
+          <a className="card link-card" href="/feeds">
+            <h3>Community</h3>
+            <p className="muted">Posts, events and conversations.</p>
+          </a>
+        </div>
         {health.error && <ErrorNote error={health.error} />}
         {health.data && (
           <ul className="status">
             <li>
-              Site Database: <strong>{health.data.database ? 'connected' : 'not enabled yet'}</strong>
+              Site Database:{' '}
+              <strong>{health.data.database ? 'connected' : 'not enabled yet'}</strong>
             </li>
             <li>
               Community Key: <strong>{health.data.communityKey ? 'available' : 'missing'}</strong>
             </li>
           </ul>
+        )}
+      </section>
+    );
+  },
+});
+
+const uploadsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/uploads',
+  component: function Uploads() {
+    const queryClient = useQueryClient();
+    const uploads = useInfiniteQuery({
+      queryKey: ['uploads'],
+      initialPageParam: undefined as string | undefined,
+      queryFn: ({pageParam}) =>
+        read<{uploads: Upload[]; nextBefore: number | null}>(
+          api.uploads.$get({query: {before: pageParam}})
+        ),
+      getNextPageParam: last => (last.nextBefore ? String(last.nextBefore) : undefined),
+    });
+    // 1. browser → CDN (presign, PUT, register)  2. this site's backend saves the URL.
+    const add = useMutation({
+      mutationFn: async (file: File) => {
+        const uploaded = await uploadFile(file);
+        return read<{upload: Upload}>(api.uploads.$post({json: uploaded}));
+      },
+      onSuccess: () => queryClient.invalidateQueries({queryKey: ['uploads']}),
+    });
+    const pick = (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (file) add.mutate(file);
+    };
+    const rows = uploads.data?.pages.flatMap(page => page.uploads) ?? [];
+
+    return (
+      <section>
+        <h1>My files</h1>
+        <p className="muted">
+          Files go straight from your browser to the community's storage; this site keeps the link.
+          Images up to 10 MB, documents up to 500 MB.
+        </p>
+        <label className="button upload-button">
+          {add.isPending ? 'Uploading…' : 'Upload a file'}
+          <input type="file" onChange={pick} disabled={add.isPending} hidden />
+        </label>
+        {add.error && <ErrorNote error={add.error} />}
+        {uploads.error && <ErrorNote error={uploads.error} />}
+        {rows.length === 0 && uploads.isSuccess && <p className="muted">No files yet.</p>}
+        <ul className="files">
+          {rows.map(file => (
+            <li key={file.id}>
+              {file.fileType === 'image' ? (
+                <img src={file.url} alt="" width={56} height={56} loading="lazy" />
+              ) : (
+                <span className="file-icon" aria-hidden="true">
+                  {file.originalName.split('.').pop()?.toUpperCase()}
+                </span>
+              )}
+              <div>
+                <a href={file.url} target="_blank" rel="noreferrer">
+                  {file.originalName}
+                </a>
+                <span className="meta">
+                  {bytes(file.fileSize)} · {when(file.createdAt)}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        {uploads.hasNextPage && (
+          <button
+            className="button ghost"
+            onClick={() => uploads.fetchNextPage()}
+            disabled={uploads.isFetchingNextPage}>
+            Load more
+          </button>
+        )}
+      </section>
+    );
+  },
+});
+
+const membersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/members',
+  component: function Members() {
+    const [search, setSearch] = useState('');
+    const [term, setTerm] = useState('');
+    const members = useInfiniteQuery({
+      queryKey: ['members', term],
+      initialPageParam: undefined as string | undefined,
+      queryFn: ({pageParam}) =>
+        read<{members: Member[]; nextCursor: string | null}>(
+          api.members.$get({query: {cursor: pageParam, search: term || undefined}})
+        ),
+      getNextPageParam: last => last.nextCursor ?? undefined,
+    });
+    const submit = (event: FormEvent) => {
+      event.preventDefault();
+      setTerm(search.trim());
+    };
+    const rows = members.data?.pages.flatMap(page => page.members) ?? [];
+
+    return (
+      <section>
+        <h1>Members</h1>
+        <p className="muted">Read by this site's server with the Community Key.</p>
+        <form className="search" onSubmit={submit}>
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name"
+            maxLength={50}
+          />
+          <button className="button ghost" type="submit">
+            Search
+          </button>
+        </form>
+        {members.error && <ErrorNote error={members.error} />}
+        {rows.length === 0 && members.isSuccess && <p className="muted">No members found.</p>}
+        <ul className="members">
+          {rows.map(member => (
+            <li key={member.id}>
+              <Avatar name={member.name} src={member.avatar} />
+              <div>
+                <a href={`/profile/${encodeURIComponent(member.slug)}`}>{member.name}</a>
+                {member.role && <span className="meta">{member.role}</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
+        {members.hasNextPage && (
+          <button
+            className="button ghost"
+            onClick={() => members.fetchNextPage()}
+            disabled={members.isFetchingNextPage}>
+            Load more
+          </button>
+        )}
+      </section>
+    );
+  },
+});
+
+const inboxRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/inbox',
+  component: function Inbox() {
+    const messages = useInfiniteQuery({
+      queryKey: ['inbox'],
+      initialPageParam: undefined as string | undefined,
+      queryFn: ({pageParam}) =>
+        read<{messages: Message[]; nextBefore: number | null}>(
+          api.contact.$get({query: {before: pageParam}})
+        ),
+      getNextPageParam: last => (last.nextBefore ? String(last.nextBefore) : undefined),
+    });
+    const rows = messages.data?.pages.flatMap(page => page.messages) ?? [];
+    return (
+      <section>
+        <h1>Inbox</h1>
+        <p className="muted">Messages from the contact page. Visible to site admins only.</p>
+        {messages.error && <ErrorNote error={messages.error} />}
+        {rows.length === 0 && messages.isSuccess && <p className="muted">No messages yet.</p>}
+        <ul className="inbox">
+          {rows.map(message => (
+            <li key={message.id}>
+              <p className="meta">
+                <strong>{message.name}</strong> ·{' '}
+                <a href={`mailto:${message.email}`}>{message.email}</a> · {when(message.createdAt)}
+              </p>
+              <p>{message.message}</p>
+            </li>
+          ))}
+        </ul>
+        {messages.hasNextPage && (
+          <button
+            className="button ghost"
+            onClick={() => messages.fetchNextPage()}
+            disabled={messages.isFetchingNextPage}>
+            Load more
+          </button>
         )}
       </section>
     );
@@ -86,7 +365,7 @@ const notesRoute = createRoute({
     const [author, setAuthor] = useState('');
     const notes = useQuery({
       queryKey: ['notes'],
-      queryFn: () => read<{notes: Note[]}>(api.notes.$get()),
+      queryFn: () => read<{notes: Note[]}>(api.notes.$get({query: {before: undefined}})),
     });
     const add = useMutation({
       mutationFn: () => read<{note: Note}>(api.notes.$post({json: {body, author}})),
@@ -103,7 +382,7 @@ const notesRoute = createRoute({
     return (
       <section>
         <h1>Notes</h1>
-        <p className="muted">Stored in your Site Database.</p>
+        <p className="muted">The smallest Site Database example: a table, a list, a form.</p>
         <form className="form" onSubmit={submit}>
           <input
             value={author}
@@ -167,36 +446,11 @@ const noteRoute = createRoute({
   },
 });
 
-const communityRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/community',
-  component: function Community() {
-    type Info = {community: {name: string; logo: string | null} | null};
-    const info = useQuery({
-      queryKey: ['community'],
-      queryFn: () => read<Info>(api.community.$get()),
-    });
-    const community = info.data?.community;
-    return (
-      <section>
-        <h1>Community</h1>
-        <p className="muted">Read by your server with the Community Key.</p>
-        {info.error && <ErrorNote error={info.error} />}
-        {community && (
-          <p className="lede">
-            {community.logo && <img src={community.logo} alt="" height={32} />} {community.name}
-          </p>
-        )}
-        {/* The community app, outside this site: a plain link. */}
-        <a href="/feeds">Open the community →</a>
-      </section>
-    );
-  },
-});
-
 export const routeTree = rootRoute.addChildren([
   overviewRoute,
+  uploadsRoute,
+  membersRoute,
+  inboxRoute,
   notesRoute,
   noteRoute,
-  communityRoute,
 ]);

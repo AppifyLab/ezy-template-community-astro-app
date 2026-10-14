@@ -27,3 +27,38 @@ model Note {
   @@index([createdAt])
   @@map("notes")
 }
+
+/// A message sent from the public contact page (`/contact`). Anyone may send
+/// one; only a visitor holding `community:site:read` may read them
+/// (`/portal/inbox`).
+model ContactMessage {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(80)
+  /// The sender typed it on THIS form to be answered. Shown only in the
+  /// admin inbox — never in a public page or a member-facing list.
+  email     String   @db.VarChar(254)
+  message   String   @db.VarChar(2000)
+  /// The sender's community profile, when they were signed in.
+  profileId Int?     @map("profile_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("contact_messages")
+}
+
+/// A file a signed-in member uploaded from `/portal/uploads`. The bytes live
+/// on the community's CDN (presign → PUT → register); this row keeps the
+/// public URL the platform returned.
+model Upload {
+  id           Int      @id @default(autoincrement())
+  /// The uploader's community profile (`/api/auth/me` → `profile.id`).
+  profileId    Int      @map("profile_id")
+  url          String   @db.VarChar(1000)
+  originalName String   @map("original_name") @db.VarChar(100)
+  fileType     String   @map("file_type") @db.VarChar(20)
+  fileSize     Int      @map("file_size")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([profileId, id])
+  @@map("uploads")
+}

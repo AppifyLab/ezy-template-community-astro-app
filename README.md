@@ -3,10 +3,15 @@
 A starter for your community's **public website plus your own small app**,
 built with [Astro](https://astro.build) and running on a Cloudflare Worker:
 
-- **Pages** (`/`, `/blog`) rendered on request from your community's live data;
-- a **portal** at `/portal` — a React app with
+- **Pages** rendered on request from your community's live data: home,
+  about, blog and a contact form (`/`, `/about`, `/blog`, `/contact`);
+- **sign-in aware**: the header, buttons and portal know whether the visitor
+  is a member, using their own community session (they sign in on your
+  community, never on a form of yours);
+- a **members' portal** at `/portal` — a React app with
   [TanStack Router](https://tanstack.com/router) and
-  [TanStack Query](https://tanstack.com/query);
+  [TanStack Query](https://tanstack.com/query): file uploads, the members
+  directory, and an inbox of contact messages for site admins;
 - your own **Site API** at `/site-api` — a [Hono](https://hono.dev) backend;
 - your own **Site Database** — Prisma Postgres, through
   [Prisma ORM 7](https://www.prisma.io).
@@ -41,7 +46,7 @@ keeps serving.
 
 | Address                    | Served by        |
 | -------------------------- | ---------------- |
-| `/`, any page slug, `/blog` | **this site**    |
+| `/`, `/about`, `/contact`, `/blog` | **this site** |
 | `/portal/…`                | **this site** (the React app) |
 | `/site-api/…`              | **this site** (your API) |
 | `/login`, `/join`, `/feeds`, `/dashboard`, `/api` … | EzyCommunity |
@@ -53,13 +58,22 @@ you add under an app path is never reached by visitors.
 
 - **Your community's public data** — name, logo, blog posts — is read on the
   server from `/api/public/...` (`src/lib/api.ts`).
+- **Who is visiting** — the server forwards the visitor's own cookies to
+  `/api/auth/me` (`src/server/viewer.ts`). Sign-in, sign-up and joining stay
+  on your community (`/login`, `/register`, `/join`).
 - **Reading as your community** — `src/server/community.ts` calls
   `/api/site/v1/...` with your **Community Key** (`EZY_COMMUNITY_KEY`, set by
   the platform). It sees what an ordinary member sees, never email addresses
-  or payment data, and it is read-only. Example: `GET /site-api/community`.
+  or payment data, and it is read-only. Example: `GET /site-api/members`,
+  shown to signed-in members only.
+- **Uploads** go from the member's browser straight to your community's
+  storage; the site keeps the link (`/portal/uploads`).
 - **Your own data** lives in your Site Database (`DATABASE_URL`, set by the
-  platform). Example: the notes at `/portal/notes`, served by
-  `GET`/`POST /site-api/notes`.
+  platform): contact messages, uploads, notes.
+
+Only your site admins (the `community:site:read` permission) can read contact
+messages, at `/portal/inbox`. Change the words on any page in
+`src/content/site.ts`.
 
 What you store in your Site Database is yours — and your responsibility.
 Deployed code can reach only your own community's address and your Site
@@ -101,25 +115,36 @@ Database panel) in `DATABASE_URL` there.
 
 ```
 prisma/
-  schema.prisma          your tables
+  schema.prisma          your tables: contact_messages, uploads, notes
   migrations/            one folder per change, applied in order at Publish
   seed.sql               fake data for the Preview Database
 src/
+  content/site.ts        navigation and the words on every page
   pages/
-    index.astro          the home page
+    index.astro          home
+    about.astro          about
+    contact.astro        the contact form
     blog/                the blog list and a single post
-    portal/[...path].astro  hosts the portal app for every /portal/* URL
+    portal/[...path].astro  hosts the portal app (members only)
     site-api/[...path].ts   hands every /site-api/* request to the Hono app
     404.astro            any address that has no page
   portal/                the React app: routes, typed API client
   server/
     app.ts               the Site API routes
-    db.ts                the Site Database client
+    viewer.ts            who is visiting (their own session)
+    page.ts              brand + visitor for every page
     community.ts         reads the community API with the Community Key
-  lib/api.ts             the public API calls the pages make
+    db.ts                the Site Database client
+  lib/
+    api.ts               the public API calls the pages make
+    browser-session.ts   browser: session refresh, sign out, uploads
+    sanitize.ts          cleans blog HTML
   middleware.ts          stops a server fetch from looping back into the site
   layouts/, components/, styles/
 ```
+
+The editor's Preview has no visitor session, so it always shows the
+signed-out site; the portal opens on your live site once you are signed in.
 
 ## Getting help
 

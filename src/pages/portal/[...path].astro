@@ -1,21 +1,46 @@
 ---
 /**
  * Every `/portal/*` URL renders this page; the TanStack Router app inside it
- * picks the screen in the browser. The brand comes from the server, like on
- * every other page.
+ * picks the screen in the browser. Members only: the server checks the
+ * visitor's own session first, and everyone else gets a sign-in prompt (the
+ * Site API checks again on every call — this page is not the guard).
  */
 import Base from '../../layouts/Base.astro';
-import {getSite} from '../../lib/api';
 import PortalApp from '../../portal/PortalApp';
+import {pageContext} from '../../server/page';
 
 export const prerender = false;
 
-const site = await getSite(Astro.url);
+const {site, viewer} = await pageContext(Astro.request, Astro.response);
+const back = encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`);
 ---
 
-<Base site={site} title="Portal">
+<Base site={site} viewer={viewer} title="Portal">
   <main class="wrap section">
-    <PortalApp client:only="react" />
-    <noscript><p class="lede">The portal needs JavaScript.</p></noscript>
+    {
+      viewer.state === 'member' ? (
+        <>
+          <PortalApp client:only="react" />
+          <noscript>
+            <p class="lede">The portal needs JavaScript.</p>
+          </noscript>
+        </>
+      ) : viewer.state === 'applicant' ? (
+        <div class="card center">
+          <h1>Almost there</h1>
+          <p class="lede">The portal opens once your membership is active.</p>
+          <a class="button" href="/join">Finish joining</a>
+        </div>
+      ) : (
+        <div class="card center">
+          <h1>Members only</h1>
+          <p class="lede">Sign in to {site?.name ?? 'the community'} to open your portal.</p>
+          <div class="actions">
+            <a class="button" href={`/login?redirectTo=${back}`}>Log in</a>
+            <a class="button ghost" href={`/register?redirectTo=${back}`}>Join</a>
+          </div>
+        </div>
+      )
+    }
   </main>
 </Base>

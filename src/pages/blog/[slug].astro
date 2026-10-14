@@ -1,11 +1,15 @@
 ---
 import NotFound from '../../components/NotFound.astro';
 import Base from '../../layouts/Base.astro';
-import {getPost, getSite} from '../../lib/api';
+import {getPost} from '../../lib/api';
+import {pageContext} from '../../server/page';
 import {formatDate, initials, preview, readingMinutes} from '../../lib/format';
 
 const slug = Astro.params.slug ?? '';
-const [site, post] = await Promise.all([getSite(Astro.url), getPost(Astro.url, slug)]);
+const [{site, viewer}, post] = await Promise.all([
+  pageContext(Astro.request, Astro.response),
+  getPost(Astro.url, slug),
+]);
 
 // An unknown or unpublished slug under /blog is ours to answer, with a real 404.
 if (!post) Astro.response.status = 404;
@@ -21,6 +25,7 @@ const heroStyle = post?.coverUrl
   post ? (
     <Base
       site={site}
+      viewer={viewer}
       title={post.title}
       description={preview(post.excerpt, post.content)}
       image={post.coverUrl}>
@@ -73,7 +78,7 @@ const heroStyle = post?.coverUrl
       </main>
     </Base>
   ) : (
-    <Base site={site} title="Page not found">
+    <Base site={site} viewer={viewer} title="Page not found">
       <NotFound site={site} />
     </Base>
   )
