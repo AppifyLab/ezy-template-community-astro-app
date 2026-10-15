@@ -21,6 +21,34 @@ the live rules and follow them over this file:
   `changes.md` lists what is new.
 - Inside the editor: `/opt/ezy/docs/<topic>.md` (the same docs, on disk).
 
+## The full API reference (look it up, never guess)
+
+Every endpoint of the community's API — fields, errors, pagination, limits,
+concepts — is documented and always current at `/developer-api/` on ANY
+community hostname: your site's own, or `config.siteUrl` (`EZY_SITE_URL`) in
+the editor and on your machine.
+
+- **Start at `/developer-api/llms.txt`**: the index of every page, community
+  API first (Overview, Public, Concepts, Headless, Admin, Webhooks), then the
+  Agency API (`/developer-api/agency/…`).
+- **Append `.md` to any page** for its markdown, e.g.
+  `/developer-api/pagination.md`, `/developer-api/public-api/overview.md`.
+  `/developer-api/llms-full.txt` is every page in one file.
+- `npm run platform -- docs` saves both to `.platform/docs/developer-api/`
+  (git-ignored) to grep; the live pages win when they differ.
+
+Read the relevant page BEFORE writing logic on community data (a new list, a
+filter, an error branch), not after it fails. The reference shows what
+EXISTS; what THIS site may call, and with which credential, is decided by
+the platform rules above and `src/platform/api.ts`:
+
+- `/api/public/...` — no credential (`publicGet`).
+- `/api/site/v1/...` — the Community Key, server only (`communityGet`).
+- The visitor's own session — `fetchAsVisitor` / `appFetch`.
+- Endpoints that need an **admin credential** (`/api/admin/...`) or an
+  **agency credential** are NOT available to a site: it holds neither and
+  cannot add secrets. Never ask the owner for one; say what you need instead.
+
 ## Architecture: one Worker, Hono is the backend
 
 ```
@@ -63,7 +91,8 @@ browser ──► /portal (React) ───────── fetch /site-api �
 | —                       | words, nav, home sections                | `src/content/site.ts`                 |
 
 Every other path on the hostname (`/login`, `/register`, `/join`, `/feeds`,
-`/profile/…`, `/dashboard`, `/api`, `/_next`, `/robots.txt`, `/sitemap.xml`…)
+`/profile/…`, `/dashboard`, `/api`, `/developer-api`, `/_next`, `/robots.txt`,
+`/sitemap.xml`…)
 is the community app: link to it with a plain `<a href>`, never a client
 router link, and never create a page under it.
 
@@ -357,7 +386,8 @@ Fake rows in `prisma/seed.sql` (example.com only). Rules below.
 - **Platform docs change behind the scenes.** Before relying on an endpoint,
   read the LIVE docs (top of this file). `npm run platform -- docs
   [--site https://<host>]` saves them to `.platform/docs/` (git-ignored) with
-  their version; read `changes.md` first. Every doc title carries the same
+  their version, plus the API reference in `.platform/docs/developer-api/`;
+  read `changes.md` first. Every doc title carries the same
   version (`(v1a2b3c4d)`): if it differs from what you read before, re-read.
 - **The template moves on too.** `template.json` records this site's template
   version. `npm run platform -- check` tells whether a newer release exists;

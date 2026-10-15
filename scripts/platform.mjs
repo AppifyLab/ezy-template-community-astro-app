@@ -101,22 +101,44 @@ async function docs() {
   if (!site) throw new Error('pass --site https://<your community host> (or set EZY_SITE_URL).');
   const out = join(ROOT, '.platform', 'docs');
   mkdirSync(out, {recursive: true});
+  const get = url => fetch(url, {headers: {'user-agent': 'community-site-platform-script'}}).catch(() => null);
+
+  // 1. The platform rules for Sites (core + topics).
   const base = `${site}/api/public/site/v1/agent-docs`;
-  const index = await fetch(base, {headers: {'user-agent': 'community-site-platform-script'}});
-  if (!index.ok) throw new Error(`${base} answered ${index.status}`);
-  const core = await index.text();
-  writeFileSync(join(out, 'core.md'), core);
-  const topics = [...new Set([...core.matchAll(/([a-z0-9-]+(?:\/[a-z0-9-]+)?)\.md/g)].map(m => m[1]))];
-  let saved = 1;
-  for (const topic of topics) {
-    const res = await fetch(`${base}/${topic}.md`, {headers: {'user-agent': 'community-site-platform-script'}});
-    if (!res.ok) continue;
-    write(join(out, `${topic}.md`), await res.text(), false);
-    saved++;
+  const index = await get(base);
+  if (index?.ok) {
+    const core = await index.text();
+    writeFileSync(join(out, 'core.md'), core);
+    const topics = [...new Set([...core.matchAll(/([a-z0-9-]+(?:\/[a-z0-9-]+)?)\.md/g)].map(m => m[1]))];
+    let saved = 1;
+    for (const topic of topics) {
+      const res = await get(`${base}/${topic}.md`);
+      if (!res?.ok) continue;
+      write(join(out, `${topic}.md`), await res.text(), false);
+      saved++;
+    }
+    const version = core.match(/\(v([0-9a-f]{6,})\)/)?.[1] ?? 'unknown';
+    writeFileSync(join(out, 'VERSION'), `${version}\n`);
+    console.log(`saved ${saved} docs (platform rules v${version}) to .platform/docs/ — read changes.md first.`);
+  } else {
+    console.warn(`platform rules not saved: ${base} answered ${index?.status ?? 'no response'}.`);
   }
-  const version = core.match(/\(v([0-9a-f]{6,})\)/)?.[1] ?? 'unknown';
-  writeFileSync(join(out, 'VERSION'), `${version}\n`);
-  console.log(`saved ${saved} docs (platform rules v${version}) to .platform/docs/ — read changes.md first.`);
+
+  // 2. The full API reference (community + agency): the index, and every page in one file to
+  //    grep. Pages are `<site>/developer-api/<path>.md`; the live copy always wins over this one.
+  let reference = 0;
+  for (const file of ['llms.txt', 'llms-full.txt']) {
+    const res = await get(`${site}/developer-api/${file}`);
+    if (!res?.ok) continue;
+    write(join(out, 'developer-api', file), await res.text(), false);
+    reference++;
+  }
+  if (reference) {
+    console.log('saved the API reference to .platform/docs/developer-api/ (llms.txt = index, llms-full.txt = every page).');
+  } else {
+    console.warn(`API reference not saved: read it live at ${site}/developer-api/llms.txt.`);
+  }
+  if (!index?.ok && !reference) throw new Error(`nothing saved from ${site}: is it a community hostname?`);
 }
 
 async function check() {
