@@ -1,42 +1,38 @@
-import {SELF_FETCH_HEADER, siteOrigin} from './community';
+import type {Viewer} from '../lib/types';
+import {isPreview, PLATFORM_HEADERS, siteOrigin} from './platform';
 
 /**
- * WHO IS VISITING, read on the server from the visitor's OWN session.
+ * WHO IS VISITING. This site has NO auth of its own: it borrows the
+ * EzyCommunity session. Sign-in, sign-up and joining always happen on the
+ * community (`/login`, `/register`, `/join`); this file only reads the result.
  *
- * The site and the EzyCommunity App share this hostname, so the visitor's
- * App cookies reach this Worker too. We forward the `cookie` header,
- * unchanged, to the App's `GET /api/auth/me` on the community's own host and
- * branch on the STATUS only (platform doc `auth.md`):
+ * DEPLOYED (the real thing)
+ *   The site and the community share the visitor's hostname, so the visitor's
+ *   community cookies reach this Worker. We forward the `cookie` header,
+ *   unchanged, to `GET /api/auth/me` on that same host and branch on the
+ *   STATUS only (platform doc `auth.md`):
+ *     200 → `member` (profile active) or `applicant` (pending / inactive)
+ *     401 → `returning` if the refresh cookie is there (the BROWSER refreshes,
+ *           `src/lib/browser-session.ts`), else `guest`
+ *     403 / 404 / anything else → `guest`
  *
- *   200 → signed in here: `member` (profile active) or `applicant` (pending /
- *         inactive: link to `/join`, show no member content)
- *   401 → access token missing or expired. If the refresh cookie is there the
- *         visitor is almost certainly still signed in: `returning`. The
- *         BROWSER refreshes (`src/lib/browser-session.ts`), never the server.
- *   403 / 404 / anything else → `guest`
+ * EDITOR PREVIEW (`EZY_PREVIEW=1`)
+ *   The Preview has no visitor session at all: no cookie reaches the dev
+ *   server and every App write answers 404. So that the owner can see and
+ *   build member and admin screens, the Preview runs a STAND-IN viewer:
+ *   a signed-in member who holds every permission (`preview: true`). Its
+ *   writes land in the PREVIEW Database only, and platform reads use the
+ *   editor's Community Key, server to server. Browser-only App calls
+ *   (uploads, sign out) cannot run there; the UI says so. This branch can
+ *   never run deployed: the platform never sets `EZY_PREVIEW` on a live site
+ *   and owners cannot set `EZY_` names.
  *
  * Never: call `/api/auth/refresh` from the server, set or rewrite an auth
- * cookie, set `x-forwarded-for` / `x-real-ip` / `ECOM_HOST`, or keep a viewer
- * in a module variable or a shared cache. A response built from it is private
- * (`Cache-Control: private, no-store`).
- *
- * The email in `/api/auth/me` is the VIEWER'S OWN. It is dropped here: no
- * page or Site API answer in this template needs it.
+ * cookie (`ecom_at` / `ecom_rt`, `__Host-` prefixed in production), set
+ * `x-forwarded-for` / `x-real-ip` / `ECOM_HOST`, or keep a viewer in a module
+ * variable or a shared cache. The email `/api/auth/me` carries is the
+ * viewer's OWN and is dropped here: nothing in this template needs it.
  */
-
-export type ViewerState = 'member' | 'applicant' | 'returning' | 'guest';
-
-export interface Viewer {
-  state: ViewerState;
-  /** The community profile (`profile.id`), when signed in. */
-  profileId: number | null;
-  /** `/profile/<slug>` in the App. */
-  profileSlug: string | null;
-  name: string | null;
-  avatar: string | null;
-  /** `profile.role.slug`: match against `/api/site/v1/roles`. Display only. */
-  roleSlug: string | null;
-}
 
 export const GUEST: Viewer = {
   state: 'guest',
@@ -45,17 +41,21 @@ export const GUEST: Viewer = {
   name: null,
   avatar: null,
   roleSlug: null,
+  preview: false,
 };
 
-/** Access + refresh cookie names: `__Host-` prefixed in production, bare locally. */
+/** The editor Preview's stand-in: see the file header. */
+export const PREVIEW_VIEWER: Viewer = {
+  state: 'member',
+  profileId: 0,
+  profileSlug: null,
+  name: 'Preview member',
+  avatar: null,
+  roleSlug: null,
+  preview: true,
+};
+
 const REFRESH_COOKIES = ['__Host-ecom_rt', 'ecom_rt'];
-
-const PLATFORM_HEADERS = {
-  accept: 'application/json',
-  // Cloudflare answers 403 to a request with no User-Agent.
-  'user-agent': 'Mozilla/5.0 (compatible; EzyCommunitySite/1.0; +https://ezycommunity.com)',
-  [SELF_FETCH_HEADER]: '1',
-};
 
 function hasCookie(cookieHeader: string, names: string[]): boolean {
   return cookieHeader
@@ -66,8 +66,8 @@ function hasCookie(cookieHeader: string, names: string[]): boolean {
 
 /**
  * `fetch` an App path (`/api/...`) on the community's own host AS THE VISITOR:
- * their cookie header forwarded unchanged. Server code only. For writes, pass
- * the browser's own `x-xsrf-token` header through (see `auth.md`).
+ * their cookie header forwarded unchanged. Server code only. For a write,
+ * pass the browser's own `x-xsrf-token` header through in `init.headers`.
  */
 export function fetchAsVisitor(
   request: Request,
@@ -77,7 +77,11 @@ export function fetchAsVisitor(
   const headers = new Headers(init.headers);
   for (const [name, value] of Object.entries(PLATFORM_HEADERS)) headers.set(name, value);
   headers.set('cookie', request.headers.get('cookie') ?? '');
-  return fetch(`${siteOrigin(request.url)}${path}`, {...init, headers});
+  return fetch(`${siteOrigin(request.url)}${path}`, {
+    ...init,
+    headers,
+    signal: init.signal ?? AbortSignal.timeout(8000),
+  });
 }
 
 interface RawProfile {
@@ -91,8 +95,10 @@ interface RawProfile {
   role?: {slug?: string} | null;
 }
 
-/** The visitor, from their own cookies. Never throws: an unknown answer is a guest. */
+/** The visitor. Never throws: an unknown answer is a guest. */
 export async function getViewer(request: Request): Promise<Viewer> {
+  if (isPreview()) return PREVIEW_VIEWER;
+
   const cookie = request.headers.get('cookie') ?? '';
   if (!cookie) return GUEST;
 
@@ -112,48 +118,48 @@ export async function getViewer(request: Request): Promise<Viewer> {
   const profile = body?.data?.profile;
   if (!profile?.id) return GUEST;
 
-  const name =
-    profile.displayName?.trim() ||
-    [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() ||
-    'Member';
-
   return {
     state: profile.status === 'active' ? 'member' : 'applicant',
     profileId: profile.id,
     profileSlug: profile.slug ?? null,
-    name,
+    name:
+      profile.displayName?.trim() ||
+      [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() ||
+      'Member',
     avatar: profile.avatar ?? null,
     roleSlug: profile.role?.slug ?? null,
+    preview: false,
   };
 }
 
 /**
- * The visitor's Role Manager codenames (`GET /api/auth/me/permissions`), for
- * showing or hiding things. The App's API enforces its own rules; a Site API
- * route that guards ITS OWN data (the contact inbox) checks this list.
+ * The visitor's Role Manager codenames (`GET /api/auth/me/permissions` →
+ * `{data: {permissions: [...]}}`). In the Preview: everything (`*`).
  */
 export async function getViewerPermissions(request: Request): Promise<Set<string>> {
+  if (isPreview()) return new Set(['*']);
   if (!request.headers.get('cookie')) return new Set();
   try {
     const res = await fetchAsVisitor(request, '/api/auth/me/permissions');
     if (!res.ok) return new Set();
-    const body = (await res.json().catch(() => null)) as {
-      permissions?: unknown;
-      data?: {permissions?: unknown};
-    } | null;
-    const list = body?.data?.permissions ?? body?.permissions;
+    const body = (await res.json().catch(() => null)) as {data?: {permissions?: unknown}} | null;
+    const list = body?.data?.permissions;
     return new Set(Array.isArray(list) ? list.filter(p => typeof p === 'string') : []);
   } catch {
     return new Set();
   }
 }
 
-/** Does a permission list grant `codename`? Honours `*` wildcards (`community:*`). */
+/**
+ * Does a permission list grant `codename`? Mirrors the platform's Role
+ * Manager: the exact codename, or a wildcard parent (`community:site:*`,
+ * `community:*`, `*`).
+ */
 export function grants(permissions: Set<string>, codename: string): boolean {
-  if (permissions.has(codename)) return true;
+  if (permissions.has(codename) || permissions.has('*')) return true;
   const parts = codename.split(':');
   for (let i = parts.length - 1; i > 0; i--) {
     if (permissions.has(`${parts.slice(0, i).join(':')}:*`)) return true;
   }
-  return permissions.has('*');
+  return false;
 }

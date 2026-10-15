@@ -1,16 +1,24 @@
 -- Wrapped in one transaction: if any statement fails, none of them apply
 -- and the live site keeps its old schema (see AGENTS.md).
 BEGIN;
--- CreateTable
-CREATE TABLE "contact_messages" (
-    "id" SERIAL NOT NULL,
-    "name" VARCHAR(80) NOT NULL,
-    "email" VARCHAR(254) NOT NULL,
-    "message" VARCHAR(2000) NOT NULL,
-    "profile_id" INTEGER,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "contact_messages_pkey" PRIMARY KEY ("id")
+-- CreateTable
+CREATE TABLE "jobs" (
+    "id" SERIAL NOT NULL,
+    "slug" VARCHAR(120) NOT NULL,
+    "title" VARCHAR(120) NOT NULL,
+    "company" VARCHAR(80) NOT NULL,
+    "location" VARCHAR(80) NOT NULL,
+    "type" VARCHAR(20) NOT NULL DEFAULT 'full-time',
+    "remote" BOOLEAN NOT NULL DEFAULT false,
+    "description" VARCHAR(10000) NOT NULL,
+    "apply_url" VARCHAR(500) NOT NULL,
+    "status" VARCHAR(10) NOT NULL DEFAULT 'open',
+    "created_by" INTEGER NOT NULL,
+    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "jobs_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -27,7 +35,10 @@ CREATE TABLE "uploads" (
 );
 
 -- CreateIndex
-CREATE INDEX "contact_messages_created_at_idx" ON "contact_messages"("created_at");
+CREATE UNIQUE INDEX "jobs_slug_key" ON "jobs"("slug");
+
+-- CreateIndex
+CREATE INDEX "jobs_status_id_idx" ON "jobs"("status", "id");
 
 -- CreateIndex
 CREATE INDEX "uploads_profile_id_id_idx" ON "uploads"("profile_id", "id");

@@ -2,7 +2,12 @@
  * What the platform hands the deployed Worker, read with
  * `import {env} from 'cloudflare:workers'` in SERVER code only.
  *
- *   EZY_SITE_URL       a plain var: the community's own origin.
+ *   EZY_SITE_URL       a plain var: the community's platform origin
+ *                      (`https://<sub>.ezycommunity.com`). Used in the Preview
+ *                      and locally; deployed, the request's own origin wins
+ *                      (see `siteOrigin` in src/server/platform.ts).
+ *   EZY_PREVIEW        `'1'` ONLY in the editor Preview (no visitor session
+ *                      there: see src/server/viewer.ts). Never set when deployed.
  *   DATABASE_URL       a secret: the Site Database (the Preview Database in the
  *                      editor). Empty until the owner enables the Site Database.
  *   EZY_COMMUNITY_KEY  a secret: the Community Key, for `/api/site/v1/...`.
@@ -12,6 +17,7 @@
 declare namespace Cloudflare {
   interface Env {
     EZY_SITE_URL?: string;
+    EZY_PREVIEW?: string;
     DATABASE_URL?: string;
     EZY_COMMUNITY_KEY?: string;
   }

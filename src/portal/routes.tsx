@@ -1,8 +1,17 @@
 import {useInfiniteQuery, useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
-import {createRootRoute, createRoute, Link, Outlet, useParams} from '@tanstack/react-router';
+import {createRootRoute, createRoute, Link, Outlet} from '@tanstack/react-router';
 import {type ChangeEvent, type FormEvent, useState} from 'react';
 
 import {uploadFile} from '../lib/browser-session';
+import {
+  type Abilities,
+  type Job,
+  JOB_TYPES,
+  type JobsPage,
+  type Member,
+  type UploadRow as Upload,
+  type Viewer,
+} from '../lib/types';
 import {api, read} from './api';
 
 /**
@@ -12,33 +21,6 @@ import {api, read} from './api';
  * links to the Astro pages or the community app (`/`, `/blog`, `/feeds`) are
  * plain `<a href>`.
  */
-
-type Viewer = {
-  state: 'member' | 'applicant' | 'returning' | 'guest';
-  profileId: number | null;
-  profileSlug: string | null;
-  name: string | null;
-  avatar: string | null;
-  roleSlug: string | null;
-};
-type Note = {id: number; body: string; author: string | null; createdAt: string};
-type Upload = {
-  id: number;
-  url: string;
-  originalName: string;
-  fileType: string;
-  fileSize: number;
-  createdAt: string;
-};
-type Member = {id: number; slug: string; name: string; avatar: string | null; role: string | null};
-type Message = {
-  id: number;
-  name: string;
-  email: string;
-  message: string;
-  profileId: number | null;
-  createdAt: string;
-};
 
 const when = (iso: string) =>
   new Intl.DateTimeFormat('en-GB', {dateStyle: 'medium', timeStyle: 'short'}).format(
@@ -74,7 +56,7 @@ function Avatar({name, src}: {name: string; src: string | null}) {
 function useMe() {
   return useQuery({
     queryKey: ['me'],
-    queryFn: () => read<{viewer: Viewer; canReadInbox: boolean}>(api.me.$get()),
+    queryFn: () => read<{viewer: Viewer; abilities: Abilities}>(api.me.$get()),
     staleTime: 60_000,
   });
 }
@@ -90,8 +72,7 @@ const rootRoute = createRootRoute({
           </Link>
           <Link to="/uploads">My files</Link>
           <Link to="/members">Members</Link>
-          {me.data?.canReadInbox && <Link to="/inbox">Inbox</Link>}
-          <Link to="/notes">Notes</Link>
+          {me.data?.abilities.manageJobs && <Link to="/jobs">Jobs</Link>}
         </nav>
         <Outlet />
       </div>
@@ -113,12 +94,12 @@ const overviewRoute = createRoute({
     const me = useMe();
     const health = useQuery({
       queryKey: ['health'],
-      queryFn: () => read<{database: boolean; communityKey: boolean}>(api.health.$get()),
-    });
-    const community = useQuery({
-      queryKey: ['community'],
       queryFn: () =>
-        read<{community: {name: string; logo: string | null} | null}>(api.community.$get()),
+        read<{preview: boolean; database: boolean; communityKey: boolean}>(api.health.$get()),
+    });
+    const brand = useQuery({
+      queryKey: ['site'],
+      queryFn: () => read<{site: {name: string} | null}>(api.site.$get()),
     });
     const viewer = me.data?.viewer;
     return (
@@ -149,13 +130,19 @@ const overviewRoute = createRoute({
           </Link>
           <Link className="card link-card" to="/members">
             <h3>Members</h3>
-            <p className="muted">Who is in {community.data?.community?.name ?? 'the community'}.</p>
+            <p className="muted">Who is in {brand.data?.site?.name ?? 'the community'}.</p>
           </Link>
           <a className="card link-card" href="/feeds">
             <h3>Community</h3>
             <p className="muted">Posts, events and conversations.</p>
           </a>
         </div>
+        {viewer?.preview && (
+          <p className="notice">
+            Editor preview: you are a stand-in member with every permission, and changes go to the
+            Preview Database. Real sign-in and uploads work on your live site.
+          </p>
+        )}
         {health.error && <ErrorNote error={health.error} />}
         {health.data && (
           <ul className="status">
@@ -201,6 +188,7 @@ const uploadsRoute = createRoute({
       if (file) add.mutate(file);
     };
     const rows = uploads.data?.pages.flatMap(page => page.uploads) ?? [];
+    const preview = useMe().data?.viewer.preview ?? false;
 
     return (
       <section>
@@ -209,10 +197,17 @@ const uploadsRoute = createRoute({
           Files go straight from your browser to the community's storage; this site keeps the link.
           Images up to 10 MB, documents up to 500 MB.
         </p>
-        <label className="button upload-button">
-          {add.isPending ? 'Uploading…' : 'Upload a file'}
-          <input type="file" onChange={pick} disabled={add.isPending} hidden />
-        </label>
+        {preview ? (
+          <p className="notice">
+            Uploads go from a signed-in member's browser to the community's storage, so they only
+            work on your live site, not in the editor preview.
+          </p>
+        ) : (
+          <label className="button upload-button">
+            {add.isPending ? 'Uploading…' : 'Upload a file'}
+            <input type="file" onChange={pick} disabled={add.isPending} hidden />
+          </label>
+        )}
         {add.error && <ErrorNote error={add.error} />}
         {uploads.error && <ErrorNote error={uploads.error} />}
         {rows.length === 0 && uploads.isSuccess && <p className="muted">No files yet.</p>}
@@ -261,7 +256,7 @@ const membersRoute = createRoute({
       initialPageParam: undefined as string | undefined,
       queryFn: ({pageParam}) =>
         read<{members: Member[]; nextCursor: string | null}>(
-          api.members.$get({query: {cursor: pageParam, search: term || undefined}})
+          api.members.$get({query: {cursor: pageParam, search: term}})
         ),
       getNextPageParam: last => last.nextCursor ?? undefined,
     });
@@ -312,134 +307,153 @@ const membersRoute = createRoute({
   },
 });
 
-const inboxRoute = createRoute({
+const EMPTY_JOB = {
+  title: '',
+  company: '',
+  location: '',
+  type: 'full-time',
+  remote: false,
+  description: '',
+  applyUrl: '',
+};
+
+/** Site admins: post, edit, close and delete jobs (`/site-api/jobs`, `MANAGE_JOBS`). */
+const jobsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/inbox',
-  component: function Inbox() {
-    const messages = useInfiniteQuery({
-      queryKey: ['inbox'],
+  path: '/jobs',
+  component: function Jobs() {
+    const queryClient = useQueryClient();
+    const [editing, setEditing] = useState<number | 'new' | null>(null);
+    const [form, setForm] = useState(EMPTY_JOB);
+    const jobs = useInfiniteQuery({
+      queryKey: ['jobs', 'manage'],
       initialPageParam: undefined as string | undefined,
-      queryFn: ({pageParam}) =>
-        read<{messages: Message[]; nextBefore: number | null}>(
-          api.contact.$get({query: {before: pageParam}})
-        ),
+      queryFn: ({pageParam}) => read<JobsPage>(api.jobs.manage.$get({query: {before: pageParam}})),
       getNextPageParam: last => (last.nextBefore ? String(last.nextBefore) : undefined),
     });
-    const rows = messages.data?.pages.flatMap(page => page.messages) ?? [];
-    return (
-      <section>
-        <h1>Inbox</h1>
-        <p className="muted">Messages from the contact page. Visible to site admins only.</p>
-        {messages.error && <ErrorNote error={messages.error} />}
-        {rows.length === 0 && messages.isSuccess && <p className="muted">No messages yet.</p>}
-        <ul className="inbox">
-          {rows.map(message => (
-            <li key={message.id}>
-              <p className="meta">
-                <strong>{message.name}</strong> ·{' '}
-                <a href={`mailto:${message.email}`}>{message.email}</a> · {when(message.createdAt)}
-              </p>
-              <p>{message.message}</p>
-            </li>
-          ))}
-        </ul>
-        {messages.hasNextPage && (
-          <button
-            className="button ghost"
-            onClick={() => messages.fetchNextPage()}
-            disabled={messages.isFetchingNextPage}>
-            Load more
-          </button>
-        )}
-      </section>
-    );
-  },
-});
-
-const notesRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/notes',
-  component: function Notes() {
-    const queryClient = useQueryClient();
-    const [body, setBody] = useState('');
-    const [author, setAuthor] = useState('');
-    const notes = useQuery({
-      queryKey: ['notes'],
-      queryFn: () => read<{notes: Note[]}>(api.notes.$get({query: {before: undefined}})),
-    });
-    const add = useMutation({
-      mutationFn: () => read<{note: Note}>(api.notes.$post({json: {body, author}})),
+    const refresh = () => queryClient.invalidateQueries({queryKey: ['jobs']});
+    const save = useMutation({
+      mutationFn: () =>
+        editing === 'new'
+          ? read<{job: Job}>(api.jobs.$post({json: form}))
+          : read<{job: Job}>(api.jobs[':id'].$patch({param: {id: String(editing)}, json: form})),
       onSuccess: () => {
-        setBody('');
-        return queryClient.invalidateQueries({queryKey: ['notes']});
+        setEditing(null);
+        return refresh();
       },
     });
+    const setStatus = useMutation({
+      mutationFn: ({id, status}: {id: number; status: string}) =>
+        read(api.jobs[':id'].$patch({param: {id: String(id)}, json: {status}})),
+      onSuccess: refresh,
+    });
+    const remove = useMutation({
+      mutationFn: (id: number) => read(api.jobs[':id'].$delete({param: {id: String(id)}})),
+      onSuccess: refresh,
+    });
+    const edit = async (id: number) => {
+      const {job} = await read<{job: Job}>(api.jobs.manage[':id'].$get({param: {id: String(id)}}));
+      setForm({
+        title: job.title,
+        company: job.company,
+        location: job.location,
+        type: job.type,
+        remote: job.remote,
+        description: job.description,
+        applyUrl: job.applyUrl,
+      });
+      setEditing(id);
+    };
+    const field = (key: keyof typeof EMPTY_JOB) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setForm(current => ({...current, [key]: key === 'remote' ? (event.target as HTMLInputElement).checked : event.target.value}));
     const submit = (event: FormEvent) => {
       event.preventDefault();
-      add.mutate();
+      save.mutate();
     };
+    const rows = jobs.data?.pages.flatMap(page => page.jobs) ?? [];
 
     return (
       <section>
-        <h1>Notes</h1>
-        <p className="muted">The smallest Site Database example: a table, a list, a form.</p>
-        <form className="form" onSubmit={submit}>
-          <input
-            value={author}
-            onChange={e => setAuthor(e.target.value)}
-            placeholder="Your name (optional)"
-            maxLength={80}
-          />
-          <textarea
-            value={body}
-            onChange={e => setBody(e.target.value)}
-            placeholder="Write a note"
-            maxLength={500}
-            required
-          />
-          <button className="button" type="submit" disabled={add.isPending}>
-            Add note
-          </button>
-        </form>
-        {add.error && <ErrorNote error={add.error} />}
-        {notes.error && <ErrorNote error={notes.error} />}
-        <ul className="notes">
-          {notes.data?.notes.map(note => (
-            <li key={note.id}>
-              <Link to="/notes/$id" params={{id: String(note.id)}}>
-                {note.body}
-              </Link>
-              <span className="meta">
-                {note.author ?? 'Anonymous'} · {when(note.createdAt)}
-              </span>
+        <div className="section-head">
+          <h1>Jobs</h1>
+          {editing === null && (
+            <button className="button" onClick={() => (setForm(EMPTY_JOB), setEditing('new'))}>
+              Post a job
+            </button>
+          )}
+        </div>
+        <p className="muted">
+          Listed on <a href="/jobs">/jobs</a>. Stored in this site's database; only site admins see this screen.
+        </p>
+
+        {editing !== null && (
+          <form className="form wide" onSubmit={submit}>
+            <h2>{editing === 'new' ? 'New job' : 'Edit job'}</h2>
+            <input value={form.title} onChange={field('title')} placeholder="Title" maxLength={120} required />
+            <div className="row">
+              <input value={form.company} onChange={field('company')} placeholder="Company" maxLength={80} required />
+              <input value={form.location} onChange={field('location')} placeholder="Location" maxLength={80} required />
+            </div>
+            <div className="row">
+              <select value={form.type} onChange={field('type')} aria-label="Job type">
+                {JOB_TYPES.map(type => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+              <label className="check">
+                <input type="checkbox" checked={form.remote} onChange={field('remote')} /> Remote
+              </label>
+            </div>
+            <textarea value={form.description} onChange={field('description')} placeholder="Description (blank line between paragraphs)" minLength={20} maxLength={10000} rows={8} required />
+            <input value={form.applyUrl} onChange={field('applyUrl')} placeholder="Apply link: https://… or mailto:…" maxLength={500} required />
+            <div className="actions">
+              <button className="button" type="submit" disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : 'Save'}
+              </button>
+              <button className="button ghost" type="button" onClick={() => setEditing(null)}>
+                Cancel
+              </button>
+            </div>
+            {save.error && <ErrorNote error={save.error} />}
+          </form>
+        )}
+
+        {jobs.error && <ErrorNote error={jobs.error} />}
+        {rows.length === 0 && jobs.isSuccess && <p className="muted">No jobs yet.</p>}
+        <ul className="files">
+          {rows.map(job => (
+            <li key={job.id}>
+              <div>
+                <a href={`/jobs/${encodeURIComponent(job.slug)}`}>{job.title}</a>
+                <span className="meta">
+                  {job.company} · {job.location} · {job.status}
+                </span>
+              </div>
+              <div className="row-actions">
+                <button className="button link small-button" onClick={() => void edit(job.id)}>
+                  Edit
+                </button>
+                <button
+                  className="button link small-button"
+                  onClick={() => setStatus.mutate({id: job.id, status: job.status === 'open' ? 'closed' : 'open'})}>
+                  {job.status === 'open' ? 'Close' : 'Reopen'}
+                </button>
+                <button
+                  className="button link small-button"
+                  onClick={() => window.confirm(`Delete “${job.title}”?`) && remove.mutate(job.id)}>
+                  Delete
+                </button>
+              </div>
             </li>
           ))}
         </ul>
-      </section>
-    );
-  },
-});
-
-const noteRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: '/notes/$id',
-  component: function NotePage() {
-    const {id} = useParams({from: '/notes/$id'});
-    const note = useQuery({
-      queryKey: ['notes', id],
-      queryFn: () => read<{note: Note}>(api.notes[':id'].$get({param: {id}})),
-    });
-    return (
-      <section>
-        <Link to="/notes">← All notes</Link>
-        {note.error && <ErrorNote error={note.error} />}
-        {note.data && (
-          <article className="note">
-            <p className="lede">{note.data.note.body}</p>
-            <p className="meta">
-              {note.data.note.author ?? 'Anonymous'} · {when(note.data.note.createdAt)}
-            </p>
-          </article>
+        {(setStatus.error || remove.error) && <ErrorNote error={(setStatus.error ?? remove.error)!} />}
+        {jobs.hasNextPage && (
+          <button className="button ghost" onClick={() => jobs.fetchNextPage()} disabled={jobs.isFetchingNextPage}>
+            Load more
+          </button>
         )}
       </section>
     );
@@ -450,7 +464,5 @@ export const routeTree = rootRoute.addChildren([
   overviewRoute,
   uploadsRoute,
   membersRoute,
-  inboxRoute,
-  notesRoute,
-  noteRoute,
+  jobsRoute,
 ]);

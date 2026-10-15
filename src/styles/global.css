@@ -756,3 +756,305 @@ hr {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* --------------------------------------------- blog as a publication -- */
+
+.pub {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 16px 64px;
+}
+
+.pub-masthead {
+  text-align: center;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+}
+
+.pub-masthead h1 {
+  margin: 0;
+  font-size: clamp(30px, 5vw, 40px);
+}
+
+.pub-tagline,
+.pub-subtitle,
+.article-subtitle {
+  color: var(--muted);
+  margin: 0;
+}
+
+.pub-search {
+  display: flex;
+  gap: 8px;
+  margin: 24px 0 8px;
+}
+
+.pub-search input,
+.filters input[type='search'],
+.filters select,
+.form select {
+  flex: 1;
+  font: inherit;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.pub-results {
+  margin: 0 0 8px;
+}
+
+.pub-featured {
+  display: block;
+  margin: 24px 0 8px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.pub-featured img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+}
+
+.pub-featured h2 {
+  font-size: clamp(24px, 4vw, 30px);
+  margin: 0 0 6px;
+}
+
+.pub-list {
+  display: grid;
+}
+
+.post-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--line);
+  text-decoration: none;
+  color: inherit;
+}
+
+.post-row:hover h3 {
+  color: var(--accent);
+}
+
+.post-row h3 {
+  margin: 0 0 6px;
+  font-size: 19px;
+}
+
+.post-row-text {
+  min-width: 0;
+}
+
+.post-row-cover {
+  width: 112px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 8px;
+  flex: none;
+}
+
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.byline span + span::before {
+  content: '·';
+  margin-right: 10px;
+}
+
+.article header {
+  margin-bottom: 24px;
+}
+
+.article h1 {
+  font-size: clamp(30px, 5vw, 42px);
+  line-height: 1.15;
+  margin: 0 0 10px;
+}
+
+.article-subtitle {
+  font-size: 20px;
+  line-height: 1.45;
+}
+
+.article-byline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.article-byline img,
+.article-byline .avatar-fallback {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.article-byline div {
+  display: grid;
+}
+
+.article-cover {
+  width: 100%;
+  border-radius: var(--radius);
+  margin-bottom: 24px;
+}
+
+.article .prose {
+  font-family: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  font-size: 19px;
+  line-height: 1.7;
+}
+
+.article-cta {
+  margin: 40px 0;
+  padding: 28px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.article-cta h2 {
+  margin: 0 0 6px;
+}
+
+.pub-related {
+  margin-top: 32px;
+}
+
+/* ----------------------------------------------------------- job board -- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 8px 0 24px;
+}
+
+.filters input[type='search'] {
+  flex: 2 1 220px;
+}
+
+.filters select {
+  flex: 1 1 140px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.job-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.job-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: inherit;
+}
+
+.job-row:hover {
+  border-color: var(--accent);
+}
+
+.job-row h3 {
+  margin: 0 0 4px;
+}
+
+.job-row p {
+  margin: 0;
+}
+
+.job-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ---------------------------------------------------------------- home -- */
+
+.quote {
+  margin: 0;
+  font-size: clamp(20px, 3vw, 26px);
+  line-height: 1.4;
+}
+
+.quote cite {
+  display: block;
+  margin-top: 12px;
+  font-size: 15px;
+  font-style: normal;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------- portal forms -- */
+
+.form.wide {
+  max-width: 44rem;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+}
+
+.form .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.form .row > * {
+  flex: 1 1 180px;
+}
+
+.row-actions {
+  margin-left: auto;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 560px) {
+  .post-row-cover {
+    width: 84px;
+  }
+}

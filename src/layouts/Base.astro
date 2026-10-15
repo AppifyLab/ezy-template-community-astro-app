@@ -11,9 +11,8 @@ import '../styles/global.css';
 
 import BrandMark from '../components/BrandMark.astro';
 import {NAV} from '../content/site';
-import type {Site} from '../lib/api';
+import type {Site, Viewer} from '../lib/types';
 import {initials} from '../lib/format';
-import type {Viewer} from '../server/viewer';
 
 interface Props {
   site: Site | null;
@@ -60,7 +59,7 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
           ))}
           {viewer.state === 'member' && (
             <a href="/portal" class:list={{active: active('/portal')}}>
-              Portal
+              Dashboard
             </a>
           )}
         </nav>
@@ -79,9 +78,13 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
                   </span>
                 )}
               </span>
-              <button class="button link small-button" type="button" data-logout>
-                Sign out
-              </button>
+              {viewer.preview ? (
+                <span class="chip" title="Editor preview: a stand-in signed-in member">Preview</span>
+              ) : (
+                <button class="button link small-button" type="button" data-logout>
+                  Sign out
+                </button>
+              )}
             </>
           ) : viewer.state === 'applicant' ? (
             <a class="button small-button" href="/join">
@@ -120,12 +123,20 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
       // ONCE in the browser (the server never does), then re-render signed in.
       if (document.body.dataset.viewer === 'returning') {
         const key = 'ezy:refreshed';
-        if (!sessionStorage.getItem(key)) {
+        let first = true;
+        try {
+          first = !sessionStorage.getItem(key);
           sessionStorage.setItem(key, '1');
-          refreshSession().then(ok => ok && window.location.reload());
+        } catch {
+          // Storage blocked: refresh anyway; `refreshSession` never loops.
         }
+        if (first) void refreshSession().then(ok => ok && window.location.reload());
       } else {
-        sessionStorage.removeItem('ezy:refreshed');
+        try {
+          sessionStorage.removeItem('ezy:refreshed');
+        } catch {
+          // Storage blocked: nothing to clear.
+        }
       }
 
       document.querySelectorAll('[data-logout]').forEach(button =>

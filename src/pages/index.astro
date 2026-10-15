@@ -1,16 +1,25 @@
 ---
+/**
+ * The home page, as sections: hero, features, latest posts, open roles, a
+ * quote and a closing call to action. Words in `src/content/site.ts`; data
+ * from the Site API in-process (posts from the community, jobs from the Site
+ * Database). A section with no data hides itself.
+ */
 import BrandMark from '../components/BrandMark.astro';
 import PostCard from '../components/PostCard.astro';
 import {HOME, withName} from '../content/site';
 import Base from '../layouts/Base.astro';
-import {listPosts} from '../lib/api';
+import type {JobsPage, PostsPage} from '../lib/types';
+import {read} from '../server/backend';
 import {pageContext} from '../server/page';
 
-const [{site, viewer}, {posts}] = await Promise.all([
-  pageContext(Astro.request, Astro.response),
-  listPosts(Astro.url, {perPage: 3}),
+const {api, site, viewer} = await pageContext(Astro.request, Astro.response);
+const [posts, jobs] = await Promise.all([
+  read<PostsPage>(api.posts.$get({query: {page: '1', perPage: '3', search: ''}})),
+  read<JobsPage>(api.jobs.$get({query: {search: '', type: '', remote: '', before: undefined}})),
 ]);
 const name = site?.name ?? 'Community';
+const member = viewer.state === 'member';
 ---
 
 <Base site={site} viewer={viewer}>
@@ -18,15 +27,16 @@ const name = site?.name ?? 'Community';
     <section class="hero">
       <div class="wrap center">
         <BrandMark site={site} size={72} />
-        <h1>{withName(HOME.tagline, name)}</h1>
-        <p class="lede">{withName(HOME.intro, name)}</p>
+        <p class="eyebrow">{withName(HOME.hero.eyebrow, name)}</p>
+        <h1>{HOME.hero.title}</h1>
+        <p class="lede">{HOME.hero.body}</p>
         {/* Join, Log in and the feed are the community app: plain links, always. */}
         <div class="actions">
           {
-            viewer.state === 'member' ? (
+            member ? (
               <>
                 <a class="button" href="/feeds">Open the community</a>
-                <a class="button ghost" href="/portal">Your portal</a>
+                <a class="button ghost" href="/portal">Your dashboard</a>
               </>
             ) : viewer.state === 'applicant' ? (
               <a class="button" href="/join">Finish joining</a>
@@ -38,14 +48,15 @@ const name = site?.name ?? 'Community';
             )
           }
         </div>
-        {viewer.state === 'member' && <p class="muted small">Welcome back, {viewer.name}.</p>}
+        {member && <p class="muted small">Welcome back, {viewer.name}.</p>}
       </div>
     </section>
 
     <section class="wrap section">
+      <h2 class="center">{HOME.features.title}</h2>
       <div class="grid grid-3">
         {
-          HOME.features.map(feature => (
+          HOME.features.items.map(feature => (
             <div class="card">
               <h3>{feature.title}</h3>
               <p class="muted">{feature.body}</p>
@@ -56,29 +67,62 @@ const name = site?.name ?? 'Community';
     </section>
 
     {
-      posts.length > 0 && (
+      (posts?.posts.length ?? 0) > 0 && (
         <section class="wrap section">
           <div class="section-head">
             <h2>Latest from the blog</h2>
             <a href="/blog">All posts →</a>
           </div>
           <div class="grid grid-3">
-            {posts.slice(0, 3).map(post => (
-              <PostCard post={post} />
-            ))}
+            {posts!.posts.map(post => <PostCard post={post} />)}
           </div>
         </section>
       )
     }
 
-    <section class="wrap section">
-      <div class="card cta">
-        <div>
-          <h2>Have a question?</h2>
-          <p class="muted">We read every message.</p>
-        </div>
-        <a class="button" href="/contact">Contact us</a>
-      </div>
+    {
+      (jobs?.jobs.length ?? 0) > 0 && (
+        <section class="wrap section">
+          <div class="section-head">
+            <h2>Open roles</h2>
+            <a href="/jobs">All jobs →</a>
+          </div>
+          <ul class="job-list">
+            {jobs!.jobs.slice(0, 3).map(job => (
+              <li>
+                <a class="job-row" href={`/jobs/${encodeURIComponent(job.slug)}`}>
+                  <div>
+                    <h3>{job.title}</h3>
+                    <p class="muted">{job.company} · {job.location}</p>
+                  </div>
+                  {job.remote && <span class="chip chip-tag">Remote</span>}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )
+    }
+
+    <section class="wrap narrow section center">
+      <blockquote class="quote">
+        <p>“{HOME.quote.text}”</p>
+        <cite>— {HOME.quote.author}</cite>
+      </blockquote>
     </section>
+
+    {
+      !member && (
+        <section class="wrap section">
+          <div class="card cta">
+            <div>
+              <h2>{withName(HOME.cta.title, name)}</h2>
+              <p class="muted">{HOME.cta.body}</p>
+            </div>
+            <a class="button" href="/register">Join now</a>
+          </div>
+        </section>
+      )
+    }
   </main>
 </Base>

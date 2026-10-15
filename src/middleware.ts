@@ -1,6 +1,6 @@
 import {defineMiddleware} from 'astro:middleware';
 
-import {SELF_FETCH_HEADER} from './server/community';
+import {SELF_FETCH_HEADER} from './server/platform';
 
 /**
  * Stops a page from fetching ITSELF forever.

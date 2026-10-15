@@ -1,8 +1,8 @@
 /**
- * The site's own words: navigation, home, about and contact copy.
+ * The site's own words: navigation, home and about copy.
  *
  * Edit freely. The community's NAME and LOGO are not here: they come from the
- * platform (`getSite`), so a rename in the community dashboard shows up here
+ * platform (`GET /site-api/site`), so a rename in the community dashboard shows up here
  * without a Publish. Use `{name}` in any string below for the community name.
  */
 
@@ -12,35 +12,49 @@ export interface NavItem {
 }
 
 /**
- * Top navigation. Every href is either a page of THIS site (`/`, `/about`,
- * `/blog`, `/contact`, `/portal`) or an App page (`/feeds`, `/login`…) —
+ * Top navigation. Every href is either a page of THIS site (`/`, `/blog`,
+ * `/jobs`, `/about`, `/portal`) or an App page (`/feeds`, `/login`…) —
  * all plain links. Never point one at a path that is neither.
  */
 export const NAV: NavItem[] = [
   {label: 'Home', href: '/'},
-  {label: 'About', href: '/about'},
   {label: 'Blog', href: '/blog'},
-  {label: 'Contact', href: '/contact'},
+  {label: 'Jobs', href: '/jobs'},
+  {label: 'About', href: '/about'},
 ];
 
+/** The home page, top to bottom. Each block is one section; reorder or drop freely. */
 export const HOME = {
-  tagline: 'Welcome to {name}',
-  intro:
-    'A place to learn, share and grow together. Read the latest from the blog, get in touch, or join the community.',
-  features: [
-    {
-      title: 'Join the conversation',
-      body: 'Posts, comments and events live in the community. Members get the full experience.',
-    },
-    {
-      title: 'Read the blog',
-      body: 'Stories, guides and announcements from the team, published straight from the community.',
-    },
-    {
-      title: 'Your own space',
-      body: 'Members get a portal on this site: upload files, browse who is here, and more.',
-    },
-  ],
+  hero: {
+    eyebrow: 'Welcome to {name}',
+    title: 'Learn, share and grow together',
+    body: 'A community for people who want to get better at what they do. Read the blog, find your next role, and join the conversation.',
+  },
+  features: {
+    title: 'What you get',
+    items: [
+      {
+        title: 'Real conversations',
+        body: 'Ask questions, share wins and get feedback from people who have been there.',
+      },
+      {
+        title: 'Practical guides',
+        body: 'Stories and how-tos on the blog, written by members and the team.',
+      },
+      {
+        title: 'Opportunities',
+        body: 'Roles shared with the community first, on the job board.',
+      },
+    ],
+  },
+  quote: {
+    text: 'I joined for the advice and stayed for the people. The best decision I made this year.',
+    author: 'A happy member',
+  },
+  cta: {
+    title: 'Ready to join {name}?',
+    body: 'It takes a minute, and it is free to start.',
+  },
 };
 
 export const ABOUT = {
@@ -60,12 +74,6 @@ export const ABOUT = {
       body: 'Create an account, introduce yourself, and jump into any conversation. Everyone is welcome.',
     },
   ],
-};
-
-export const CONTACT = {
-  title: 'Contact',
-  lede: 'Questions, ideas or partnerships: send us a message and we will get back to you.',
-  success: 'Thanks! Your message has been sent.',
 };
 
 /** Fill `{name}` with the community's name. */

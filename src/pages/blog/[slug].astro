@@ -1,80 +1,82 @@
 ---
+/**
+ * One post, as an article: title, subtitle, byline, cover, body, a call to
+ * join, and related posts. Rendered on the server from
+ * `GET /site-api/posts/:slug` (HTML already sanitized there). An unknown slug
+ * answers a real 404.
+ */
 import NotFound from '../../components/NotFound.astro';
+import PostRow from '../../components/PostRow.astro';
 import Base from '../../layouts/Base.astro';
-import {getPost} from '../../lib/api';
-import {pageContext} from '../../server/page';
 import {formatDate, initials, preview, readingMinutes} from '../../lib/format';
+import type {Post, PostSummary} from '../../lib/types';
+import {read} from '../../server/backend';
+import {pageContext} from '../../server/page';
 
 const slug = Astro.params.slug ?? '';
-const [{site, viewer}, post] = await Promise.all([
-  pageContext(Astro.request, Astro.response),
-  getPost(Astro.url, slug),
+const {api, site, viewer} = await pageContext(Astro.request, Astro.response);
+const [found, related] = await Promise.all([
+  read<{post: Post}>(api.posts[':slug'].$get({param: {slug}})),
+  read<{posts: PostSummary[]}>(api.posts[':slug'].related.$get({param: {slug}})),
 ]);
-
-// An unknown or unpublished slug under /blog is ours to answer, with a real 404.
+const post = found?.post ?? null;
 if (!post) Astro.response.status = 404;
-
-// `backgroundImage` (not the `background` shorthand, which would reset the
-// colour). Quoted so a url containing `(` or `)` cannot end the css function.
-const heroStyle = post?.coverUrl
-  ? `background-image: url("${post.coverUrl.replace(/"/g, '%22')}")`
-  : undefined;
+const name = site?.name ?? 'Community';
 ---
 
 {
   post ? (
-    <Base
-      site={site}
-      viewer={viewer}
-      title={post.title}
-      description={preview(post.excerpt, post.content)}
-      image={post.coverUrl}>
-      <main>
-        <header class="post-hero" style={heroStyle}>
-          <div class="wrap center post-hero-inner">
+    <Base site={site} viewer={viewer} title={post.title} description={preview(post.excerpt, post.content)} image={post.coverUrl}>
+      <main class="pub">
+        <article class="article">
+          <header>
             <h1>{post.title}</h1>
-            <p class="post-meta">
-              {post.authors.map(author => (
-                <span class="author">
-                  {author.avatar ? (
-                    <img src={author.avatar} alt="" width="24" height="24" />
-                  ) : (
-                    <span class="avatar-fallback" aria-hidden="true">
-                      {initials(author.name)}
-                    </span>
-                  )}
-                  {/* Name only. A member's email is never shown. */}
-                  {author.name}
+            {post.excerpt && <p class="article-subtitle">{post.excerpt}</p>}
+            <div class="article-byline">
+              {post.authors.map(author =>
+                author.avatar ? (
+                  <img src={author.avatar} alt="" width="36" height="36" />
+                ) : (
+                  <span class="avatar-fallback" aria-hidden="true">{initials(author.name)}</span>
+                )
+              )}
+              <div>
+                <strong>{post.authors.map(author => author.name).join(', ') || name}</strong>
+                <span class="muted small">
+                  {post.publishedAt && formatDate(post.publishedAt)} · {readingMinutes(post.content)} min read
                 </span>
-              ))}
-              {post.publishedAt && <span>{formatDate(post.publishedAt)}</span>}
-              <span>{readingMinutes(post.content)} minute read</span>
-            </p>
-          </div>
-        </header>
+              </div>
+            </div>
+          </header>
 
-        <article class="wrap narrow section">
-          {/*
-            Rendered as HTML, the same as the community's own blog page: rich
-            text written by the community's blog admins in the platform editor.
-          */}
+          {post.coverUrl && <img class="article-cover" src={post.coverUrl} alt="" />}
+
           <div class="prose" set:html={post.content} />
 
           {(post.categories.length > 0 || post.tags.length > 0) && (
             <p class="terms">
-              {post.categories.map(category => (
-                <span class="chip">{category.name}</span>
-              ))}
-              {post.tags.map(tag => (
-                <span class="chip chip-tag">#{tag.name}</span>
-              ))}
+              {post.categories.map(category => <span class="chip">{category.name}</span>)}
+              {post.tags.map(tag => <span class="chip chip-tag">#{tag.name}</span>)}
             </p>
           )}
-
-          <p class="section">
-            <a href="/blog">← All posts</a>
-          </p>
         </article>
+
+        {viewer.state !== 'member' && (
+          <aside class="article-cta">
+            <h2>Enjoyed this? Join {name}</h2>
+            <p class="muted">Get the conversation, the events and every new post.</p>
+            <a class="button" href={`/register?redirectTo=${encodeURIComponent(Astro.url.pathname)}`}>Join for free</a>
+          </aside>
+        )}
+
+        {(related?.posts.length ?? 0) > 0 && (
+          <section class="pub-related">
+            <h2>Keep reading</h2>
+            <div class="pub-list">{related!.posts.map(item => <PostRow post={item} />)}</div>
+          </section>
+        )}
+
+        <p><a href="/blog">← All posts</a></p>
       </main>
     </Base>
   ) : (

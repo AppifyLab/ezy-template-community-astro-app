@@ -2,19 +2,17 @@
 -- `npx prisma migrate reset`, or on demand with `npx prisma db seed`.
 -- Live data never comes from here. Safe to run twice: each block only fills an
 -- empty table.
-INSERT INTO "notes" ("body", "author")
-SELECT v.body, v.author
+INSERT INTO "jobs" ("slug", "title", "company", "location", "type", "remote", "description", "apply_url", "status", "created_by", "updated_at")
+SELECT v.slug, v.title, v.company, v.location, v.type, v.remote, v.description, v.apply_url, 'open', 0, now()
 FROM (VALUES
-  ('Welcome! This note lives in your Site Database.', 'The team'),
-  ('Add a note from /portal/notes and it shows up here too.', NULL)
-) AS v(body, author)
-WHERE NOT EXISTS (SELECT 1 FROM "notes");
-
--- example.com addresses only: never real people's.
-INSERT INTO "contact_messages" ("name", "email", "message")
-SELECT v.name, v.email, v.message
-FROM (VALUES
-  ('Ada Example', 'ada@example.com', 'Hi! Do you run events for beginners?'),
-  ('Sam Sample', 'sam@example.com', 'We would love to partner on a workshop.')
-) AS v(name, email, message)
-WHERE NOT EXISTS (SELECT 1 FROM "contact_messages");
+  ('community-manager', 'Community Manager', 'Example Co', 'London', 'full-time', true,
+   E'Help our members get the most out of the community.\n\nYou will run events, welcome new members and keep conversations kind.',
+   'mailto:jobs@example.com'),
+  ('frontend-developer', 'Frontend Developer', 'Sample Labs', 'Berlin', 'contract', true,
+   E'Build fast, accessible pages with Astro and React.\n\nThree-month contract, possible extension.',
+   'https://example.com/careers/frontend'),
+  ('content-writer', 'Content Writer', 'Demo Media', 'New York', 'part-time', false,
+   E'Write guides and stories for our blog.\n\nTwo days a week, flexible hours.',
+   'https://example.com/careers/writer')
+) AS v(slug, title, company, location, type, remote, description, apply_url)
+WHERE NOT EXISTS (SELECT 1 FROM "jobs");

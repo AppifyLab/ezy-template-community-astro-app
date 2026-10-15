@@ -1,0 +1,46 @@
+---
+/**
+ * One job. Rendered on the server from `GET /site-api/jobs/:slug`; a closed or
+ * unknown job answers a real 404. The description is plain text, rendered as
+ * paragraphs (never as HTML).
+ */
+import NotFound from '../../components/NotFound.astro';
+import Base from '../../layouts/Base.astro';
+import {formatDate} from '../../lib/format';
+import type {Job} from '../../lib/types';
+import {read} from '../../server/backend';
+import {pageContext} from '../../server/page';
+
+const slug = Astro.params.slug ?? '';
+const {api, site, viewer, abilities} = await pageContext(Astro.request, Astro.response);
+const job = (await read<{job: Job}>(api.jobs[':slug'].$get({param: {slug}})))?.job ?? null;
+if (!job) Astro.response.status = 404;
+const paragraphs = job?.description.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean) ?? [];
+const label = (t: string) => t.replace('-', ' ').replace(/^\w/, c => c.toUpperCase());
+---
+
+{
+  job ? (
+    <Base site={site} viewer={viewer} title={job.title} description={`${job.title} at ${job.company}, ${job.location}.`}>
+      <main class="wrap narrow section">
+        <p><a href="/jobs">← All jobs</a></p>
+        <p class="eyebrow">{job.company}</p>
+        <h1>{job.title}</h1>
+        <p class="job-tags">
+          <span class="chip">{label(job.type)}</span>
+          {job.remote && <span class="chip chip-tag">Remote</span>}
+          <span class="muted">{job.location} · Posted {formatDate(job.createdAt)}</span>
+        </p>
+        <div class="prose">{paragraphs.map(p => <p>{p}</p>)}</div>
+        <div class="actions">
+          <a class="button" href={job.applyUrl} rel="noopener noreferrer" target="_blank">Apply</a>
+          {abilities.manageJobs && <a class="button ghost" href="/portal/jobs">Manage jobs</a>}
+        </div>
+      </main>
+    </Base>
+  ) : (
+    <Base site={site} viewer={viewer} title="Page not found">
+      <NotFound site={site} />
+    </Base>
+  )
+}
