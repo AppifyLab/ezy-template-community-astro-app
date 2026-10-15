@@ -24,18 +24,28 @@ the live rules and follow them over this file:
 ## The full API reference (look it up, never guess)
 
 Every endpoint of the community's API — fields, errors, pagination, limits,
-concepts — is documented and always current at `/developer-api/` on ANY
-community hostname: your site's own, or `config.siteUrl` (`EZY_SITE_URL`) in
-the editor and on your machine.
+concepts — is documented and always current. Read it while you code.
 
-- **Start at `/developer-api/llms.txt`**: the index of every page, community
-  API first (Overview, Public, Concepts, Headless, Admin, Webhooks), then the
-  Agency API (`/developer-api/agency/…`).
-- **Append `.md` to any page** for its markdown, e.g.
-  `/developer-api/pagination.md`, `/developer-api/public-api/overview.md`.
-  `/developer-api/llms-full.txt` is every page in one file.
-- `npm run platform -- docs` saves both to `.platform/docs/developer-api/`
-  (git-ignored) to grep; the live pages win when they differ.
+**Base URL**: `https://community.ezycommunity.com` always works. The same
+docs are also served at `/developer-api/` on THIS community's own hostname
+(`config.siteUrl` / `EZY_SITE_URL` in the editor and on your machine).
+
+| What                          | URL (on the base URL)                          |
+| ----------------------------- | ---------------------------------------------- |
+| Community API docs (browse)   | `/developer-api`                               |
+| Agency API docs (browse)      | `/developer-api/agency`                        |
+| Index of EVERY page, for you  | `/developer-api/llms.txt` (community + agency) |
+| Every page in one file        | `/developer-api/llms-full.txt`                 |
+| Any page as markdown          | its URL + `.md`, e.g. `/developer-api/pagination.md`, `/developer-api/agency/index.md` |
+
+So, in full: `https://community.ezycommunity.com/developer-api/llms.txt`.
+There is no separate agency index: the agency pages are the "Agency API"
+section of `llms.txt`. `npm run platform -- docs` saves `llms.txt` and
+`llms-full.txt` to `.platform/docs/developer-api/` (git-ignored) to grep;
+the live pages win when they differ.
+
+These are docs for YOU, read while writing code. Site code never fetches
+them at runtime (a deployed site may only call its own host).
 
 Read the relevant page BEFORE writing logic on community data (a new list, a
 filter, an error branch), not after it fails. The reference shows what
