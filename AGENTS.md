@@ -41,10 +41,12 @@ browser ──► /portal (React) ───────── fetch /site-api �
   guards, permissions, browser session, sanitizer, config). Never edit it:
   `npm run platform -- upgrade` replaces it wholesale. Build on it from your
   own code (`src/server/`, `src/pages/`, `src/portal/`, `src/content/`).
-- **Static where it can be, dynamic where it must be.** Marketing pages
-  (`/`, `/about`) are PRERENDERED: built once, served as files by the CDN's
-  asset layer before the Worker runs. Blog and jobs are server-rendered
-  (fresh data, real 404s, crawlable search). The dashboard is a client app.
+- **Static where it can be, dynamic where it must be, an app where it is
+  one.** Marketing pages (`/`, `/about`) are PRERENDERED: built once, served
+  as files by the CDN's asset layer before the Worker runs. Blog and jobs are
+  server-rendered (fresh data, real 404s, crawlable search). Every signed-in,
+  interactive screen is a single-page app (`/portal`). Pick with the table in
+  "Which kind of page" below, BEFORE writing any page.
 - **One Worker, one build, one deploy.** Pages, the Site API and the portal
   always go live together. Don't add a second Worker, a service binding, a
   queue, KV/R2/D1 or Durable Objects: the platform gives a Site none of them.
@@ -181,6 +183,28 @@ There is no shared cache for a Site: no KV, no Redis, no Durable Objects, and
   only resolved answers. Never a visitor's answer, never data a session gates.
 - **The Site Database** for anything that must be shared or durable.
 
+## Which kind of page (decide FIRST, every time)
+
+| The page is…                                                        | Build it as                    | Why                                         |
+| ------------------------------------------------------------------- | ------------------------------ | ------------------------------------------- |
+| Signed-in and interactive: a dashboard, CRM, admin tool, tracker, settings, any form-driven screen | **SPA** — a screen in `/portal` (or its own app, below) | No full page reload per click or save; one shell, client routing, cached data |
+| Public content that must be indexed or shared per URL: a list, search results, a detail page | **SSR** — `src/pages/<name>/*.astro` | Fresh HTML per URL, real 404s, crawlable |
+| Public content that rarely changes: home, about, pricing, features | **Static** — `prerender = true` | Served as a file, no server work per visit |
+
+Hard rules:
+
+- **NEVER build a signed-in app as one `.astro` page per screen.** Every
+  link and every save is then a full page reload: the header re-renders,
+  the session is looked up again and the app flashes white. An app is ONE
+  catch-all page hosting a React app; its screens are client routes.
+- Inside an app, links between its screens are TanStack Router `<Link>`, and
+  after a save you `navigate()` and invalidate the query, never
+  `window.location.href = …` and never a `<form>` post.
+- An app's screens are never SEO pages: search engines never see signed-in
+  content, so server-rendering them buys nothing.
+- Never mix: an SSR or static page does not host app screens, and an app
+  does not render public SEO content.
+
 ## Recipes
 
 ### A Site API route (do this first for any new data)
@@ -238,11 +262,29 @@ be fresh or crawlable per URL (a list with search, a detail page).
    `app.ts` `/me` and `Abilities`). That only HIDES the link; the route's
    guard is the enforcement.
 
-### A member-only or admin-only page
-Server: `viewer.state === 'member'` / an ability from `pageContext`; render the
-sign-in prompt otherwise (see `src/pages/portal/[...path].astro`). The data
-route enforces it again. Codenames used here: `community:site:update`
-(manage jobs).
+### A member-only or admin-only screen
+It is an app screen: build it in the portal (above), NOT as an `.astro` page.
+The portal's host page (`src/pages/portal/[...path].astro`) already shows the
+sign-in prompt to everyone who is not a member; admin screens additionally
+need an ability (`abilities` in `/site-api/me`) to show and
+`requirePermission(codename)` on their routes to work. Codenames used here:
+`community:site:update` (manage jobs).
+
+The only `.astro` page that checks the visitor itself is an app's host page.
+
+### A separate app at its own path (like `/crm`)
+Default is a section of the portal (`/portal/crm/...`). Only when the owner
+asks for its own path:
+1. ONE host page `src/pages/<app>/[...path].astro`, a copy of
+   `src/pages/portal/[...path].astro` (`prerender = false`, the same
+   member / applicant / sign-in branches) rendering e.g.
+   `<CrmApp client:only="react" />`. No other `.astro` file under
+   `src/pages/<app>/`.
+2. `src/<app>/` (e.g. `src/crm/CrmApp.tsx`): a copy of `src/portal/PortalApp.tsx` with its
+   own `createRouter({routeTree, basepath: '/<app>'})`, and the screens in
+   `src/<app>/routes.tsx`. Data through the typed `api` client
+   (`src/portal/api.ts`), TanStack Query.
+3. The path must not be one the community app owns (see the list above).
 
 ### A custom app (a CRM, a booking tool, an internal tracker)
 1. **Decide who may do what with EXISTING codenames.** A Site cannot create
@@ -258,8 +300,9 @@ route enforces it again. Codenames used here: `community:site:update`
 3. **Routes** `src/server/routes/<app>.ts`: every read and write behind
    `withViewer → requireMember → requirePermission(CODENAMES.X)`; select
    columns explicitly; keyset pagination; validate every input.
-4. **Screens** in the dashboard (`src/portal/routes.tsx`), shown from
-   `abilities` in `/site-api/me` (add one per feature).
+4. **Screens** as SPA routes in the dashboard (`src/portal/routes.tsx`, or
+   its own app at its own path, above), shown from `abilities` in
+   `/site-api/me` (add one per feature). Never one `.astro` page per screen.
 5. People data comes from the platform, read-only: the members directory
    (`/team/members/list`) with the Community Key, after `requireMember`.
    Writes to the community itself (posts, enrolments) are not available to a

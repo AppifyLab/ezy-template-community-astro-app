@@ -4,6 +4,14 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
+## 0.3.2
+
+- `AGENTS.md`: "Which kind of page" — signed-in, interactive screens
+  (dashboards, CRMs, admin tools) are ALWAYS a single-page app (the portal,
+  or one catch-all host page per app), never one `.astro` page per screen;
+  SSR is for crawlable public lists and details, static for marketing pages.
+  Recipe for a separate app at its own path (`/crm`).
+
 ## 0.3.1
 
 - `npm run dev` generates the Prisma client first. A fresh copy (the editor
