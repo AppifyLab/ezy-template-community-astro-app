@@ -4,6 +4,17 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
+## 0.4.1
+
+- `AGENTS.md`: "The full API reference" — every endpoint is documented live
+  at `/developer-api/llms.txt` on any community hostname (`.md` per page,
+  `agency/` for the agency API). Look it up before writing logic; the
+  platform rules still decide what a site may call (no admin or agency
+  credential on a site).
+- `npm run platform -- docs` also saves the API reference
+  (`.platform/docs/developer-api/llms.txt`, `llms-full.txt`), and saves what
+  it can when one of the two sources is unreachable.
+
 ## 0.4.0
 
 - `AGENTS.md`: "Which kind of page" — signed-in, interactive screens
