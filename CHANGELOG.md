@@ -4,6 +4,16 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
+## 0.4.2
+
+- `AGENTS.md`: the API reference section names the base URL
+  (`https://community.ezycommunity.com`, or the community's own host) and
+  every docs URL in full: community docs, agency docs, `llms.txt`,
+  `llms-full.txt`, and `.md` per page. Notes there is no separate agency
+  index.
+- `npm run platform -- docs` falls back to `https://community.ezycommunity.com`
+  for the API reference when the community's own host does not serve it.
+
 ## 0.4.1
 
 - `AGENTS.md`: "The full API reference" — every endpoint is documented live

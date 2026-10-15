@@ -96,6 +96,9 @@ function write(path, data, dryRun) {
   writeFileSync(path, data);
 }
 
+/** Where the API reference always answers; a community's own host serves the same docs. */
+const API_DOCS_BASE = 'https://community.ezycommunity.com';
+
 async function docs() {
   const site = (option('--site') ?? process.env.EZY_SITE_URL ?? '').replace(/\/+$/, '');
   if (!site) throw new Error('pass --site https://<your community host> (or set EZY_SITE_URL).');
@@ -126,9 +129,11 @@ async function docs() {
 
   // 2. The full API reference (community + agency): the index, and every page in one file to
   //    grep. Pages are `<site>/developer-api/<path>.md`; the live copy always wins over this one.
+  //    The community's own host first, then the platform's docs host (same docs, always up).
   let reference = 0;
   for (const file of ['llms.txt', 'llms-full.txt']) {
-    const res = await get(`${site}/developer-api/${file}`);
+    let res = await get(`${site}/developer-api/${file}`);
+    if (!res?.ok) res = await get(`${API_DOCS_BASE}/developer-api/${file}`);
     if (!res?.ok) continue;
     write(join(out, 'developer-api', file), await res.text(), false);
     reference++;
@@ -136,7 +141,7 @@ async function docs() {
   if (reference) {
     console.log('saved the API reference to .platform/docs/developer-api/ (llms.txt = index, llms-full.txt = every page).');
   } else {
-    console.warn(`API reference not saved: read it live at ${site}/developer-api/llms.txt.`);
+    console.warn(`API reference not saved: read it live at ${API_DOCS_BASE}/developer-api/llms.txt.`);
   }
   if (!index?.ok && !reference) throw new Error(`nothing saved from ${site}: is it a community hostname?`);
 }
