@@ -2,7 +2,7 @@ import {useInfiniteQuery, useMutation, useQuery, useQueryClient} from '@tanstack
 import {createRootRoute, createRoute, Link, Outlet} from '@tanstack/react-router';
 import {type ChangeEvent, type FormEvent, useState} from 'react';
 
-import {uploadFile} from '../lib/browser-session';
+import {storeFile} from '../lib/browser-session';
 import {
   type Abilities,
   type Job,
@@ -174,11 +174,11 @@ const uploadsRoute = createRoute({
         ),
       getNextPageParam: last => (last.nextBefore ? String(last.nextBefore) : undefined),
     });
-    // 1. browser → CDN (presign, PUT, register)  2. this site's backend saves the URL.
+    // 1. browser → storage (presign, PUT)  2. the Site API registers it as this member and saves it.
     const add = useMutation({
       mutationFn: async (file: File) => {
-        const uploaded = await uploadFile(file);
-        return read<{upload: Upload}>(api.uploads.$post({json: uploaded}));
+        const stored = await storeFile(file);
+        return read<{upload: Upload}>(api.uploads.$post({json: stored}));
       },
       onSuccess: () => queryClient.invalidateQueries({queryKey: ['uploads']}),
     });

@@ -1,5 +1,9 @@
 # Rules for AI agents working in this app
 
+The single source of rules for EVERY coding agent (Codex, Claude Code, Cursor,
+Gemini, Copilot…). `CLAUDE.md` and `GEMINI.md` only import this file: edit
+here, never there.
+
 This repo is ONE community's website AND its own app, in one Astro project on
 ONE Cloudflare Worker (`output: 'server'`, `@astrojs/cloudflare`). It already
 works end to end: server-rendered pages, a blog, a job board with search, a
@@ -15,7 +19,7 @@ the live rules and follow them over this file:
 - `…/agent-docs/<topic>.md`: `auth.md`, `uploads.md`, `public-api.md`,
   `community-key.md`, `site-api.md`, `site-database.md`, `publishing.md`;
   `changes.md` lists what is new.
-- Inside the EzyCommunity editor: `/opt/ezy/docs/<topic>.md`.
+- Inside the editor: `/opt/ezy/docs/<topic>.md` (the same docs, on disk).
 
 ## Architecture: one Worker, Hono is the backend
 
@@ -50,35 +54,36 @@ browser ──► /portal (React) ───────── fetch /site-api �
 
 Every other path on the hostname (`/login`, `/register`, `/join`, `/feeds`,
 `/profile/…`, `/dashboard`, `/api`, `/_next`, `/robots.txt`, `/sitemap.xml`…)
-is the EzyCommunity App: link to it with a plain `<a href>`, never a client
+is the community app: link to it with a plain `<a href>`, never a client
 router link, and never create a page under it.
 
 ## Environment
 
-Read with `import {env} from 'cloudflare:workers'` in SERVER code only
-(`Astro.locals.runtime` no longer exists). Typed in `src/env.d.ts`.
+Read ONLY through `config` (`src/server/config.ts`), in server code. The
+names in the first column are the hosting platform's contract: it sets them,
+you cannot rename or add them. Never read `env` anywhere else.
 
-| Name                | Deployed                         | Editor Preview                 | Your machine (`.env`) |
-| ------------------- | -------------------------------- | ------------------------------ | --------------------- |
-| `EZY_SITE_URL`      | platform host (plain var)        | platform host                  | you set it            |
-| `EZY_PREVIEW`       | never set                        | `'1'`                          | unset (or `1` to try) |
-| `EZY_COMMUNITY_KEY` | the live key (secret)            | the editor key                 | optional              |
-| `DATABASE_URL`      | live Site Database (secret)      | the Preview Database           | optional              |
+| `config.`      | Platform name       | Deployed                    | Editor Preview       | Your machine (`.env`) |
+| -------------- | ------------------- | --------------------------- | -------------------- | --------------------- |
+| `siteUrl`      | `EZY_SITE_URL`      | platform host (plain var)   | platform host        | you set it            |
+| `preview`      | `EZY_PREVIEW`       | always false                | true                 | `1` to try it         |
+| `communityKey` | `EZY_COMMUNITY_KEY` | the live key (secret)       | the editor key       | optional              |
+| `databaseUrl`  | `DATABASE_URL`      | live Site Database (secret) | the Preview Database | optional              |
 
 - **Which origin to call** (`siteOrigin` in `src/server/platform.ts`): deployed,
   the request's OWN origin. The visitor may be on the community's custom
   domain, and a live Site may only fetch the host it was visited on. In the
-  Preview and on your machine, `EZY_SITE_URL`. Always go through
+  Preview and on your machine, `config.siteUrl`. Always go through
   `platform.ts` / `viewer.ts`; never build a platform URL yourself.
-- Empty `DATABASE_URL` = Site Database not enabled: routes answer 503 (`withDb`);
-  ask the owner to enable it. Missing key: 503 `community_key_missing`.
+- No `databaseUrl` = Site Database not enabled: routes answer 503 (`withDb`);
+  ask the owner to enable it. No key: 503 `community_key_missing`.
 - Never send a secret to the browser, log it, write it to a file (`.env`,
   `.dev.vars`, config) or commit it. A `.dev.vars` file stops the Preview
   from receiving secrets. You cannot add secrets; never ask for one.
 - Deployed server code reaches ONLY the community's own host and
   `db.prisma.io`; everything else is `403 Egress blocked`. No raw TCP.
 
-## Auth: borrowed from EzyCommunity, never built here
+## Auth: borrowed from the community, never built here
 
 This site has NO login of its own. Visitors sign in on the community
 (`/login?redirectTo=<path>`, `/register?redirectTo=<path>`, applicants `/join`;
@@ -92,16 +97,32 @@ account page, never ask for a password, never handle tokens.
   layout's script refreshes ONCE in the browser and reloads), `guest`.
   Permissions: `getViewerPermissions()` → `/api/auth/me/permissions`;
   `grants(perms, codename)` mirrors the Role Manager's wildcards.
-- **Editor Preview (`EZY_PREVIEW=1`):** the Preview has no visitor session at
+- **How the backend finds the visitor (fast, once per request):**
+  1. `src/middleware.ts` opens a per-request scope (`request-scope.ts`,
+     `AsyncLocalStorage`) around every page and `/site-api` call.
+  2. `getViewer()` looks at the auth cookies by NAME only (never parsed,
+     verified or stored: they are the platform's HttpOnly tokens). No access
+     and no refresh cookie → `guest`, with NO platform call. Refresh cookie
+     only → `returning`, no call. Otherwise one `GET /api/auth/me`.
+  3. The answer is memoized in the scope: the layout, the page and every
+     in-process Site API call share it. `/me` fetches the viewer and the
+     permissions in PARALLEL.
+  4. In a route: `withViewer` → `c.var.viewer`; `requireMember`,
+     `requirePermission(codename)` enforce. Never trust a viewer, role or
+     profile id sent by the browser: it always comes from the platform.
+- **Editor Preview (`config.preview`):** the Preview has no visitor session at
   all (no cookies reach the dev server, App writes are 404). The site runs a
   STAND-IN viewer: a signed-in member holding every permission, marked
   `preview: true` and shown as a "Preview" chip. Writes go to the Preview
   Database. Platform reads still use the Community Key, server to server.
   Browser-only App calls (uploads, sign out) cannot run there: the UI says so.
-  Never derive a stand-in from anything but `EZY_PREVIEW`.
+  Never derive a stand-in from anything but `config.preview`.
 - **Browser:** `src/lib/browser-session.ts`: `appFetch()` (sends
   `X-XSRF-TOKEN` on writes, ONE shared `/api/auth/refresh` on 401),
-  `logout()`, `uploadFile()`.
+  `logout()`, `storeFile()`, `xsrfHeader()`.
+- **Cross-site writes are refused** by `sameOrigin` on the whole Site API
+  (every non-GET: `Sec-Fetch-Site` must be same-origin, `Origin` must be
+  this host), whatever the content type. Keep it on every write route.
 - Never call `/api/auth/refresh` from the server, never set/rename/delete the
   auth cookies (`ecom_at`, `ecom_rt`, `__Host-` prefixed in production), never
   set `x-forwarded-for`, `x-real-ip` or `ECOM_HOST`, never keep a viewer in a
@@ -115,7 +136,7 @@ account page, never ask for a password, never handle tokens.
 | Call                                | Credential                         | Code                       |
 | ----------------------------------- | ---------------------------------- | -------------------------- |
 | `/api/public/...` (blog, brand)     | none                               | `publicGet()`              |
-| `/api/site/v1/...` (members, feed…) | `Bearer EZY_COMMUNITY_KEY`         | `communityGet()`           |
+| `/api/site/v1/...` (members, feed…) | `Bearer config.communityKey`       | `communityGet()`           |
 | `/api/auth/me...` (the visitor)     | the visitor's own cookies          | `fetchAsVisitor()`         |
 
 The Community Key is read-only, member level, never emails or payment data,
@@ -124,13 +145,33 @@ visitor's own session allows it (`requireMember`). Every answer is re-projected
 field by field into `src/lib/types.ts` shapes. Every call has a timeout and
 never throws into a page: a page renders its fallback instead.
 
-## Uploads
+## Uploads (secure by construction)
 
-Browser only, signed-in members, deployed site only: presign → `PUT` to the CDN
-→ register (`uploadFile()`), then save the link with `POST /site-api/uploads`.
-The bytes never pass through the Worker. Limits and errors: `uploads.md`.
-`402` = the community's storage is full or not in its plan: say uploads are
+1. Browser, signed-in member: `storeFile()` presigns as the member and `PUT`s
+   the bytes straight to the community's storage. The bytes never pass
+   through the Worker.
+2. Browser → `POST /site-api/uploads {key, publicUrl, originalName}`.
+3. Server: registers the file with the platform AS THE SAME MEMBER (their
+   cookies + their own `X-XSRF-TOKEN`, forwarded) and stores ONLY what the
+   platform confirms (`file_link`, type, size). The platform refuses a key
+   this member did not presign, so nobody can save someone else's file or an
+   arbitrary URL as theirs. Never store a URL the browser sent you directly.
+
+Deployed site only (the Preview has no session). Limits and errors:
+`uploads.md`. `402` = storage full or not in the plan: say uploads are
 unavailable, never retry. Always `skip_gallery: true`.
+
+## Caching
+
+There is no shared cache for a Site: no KV, no Redis, no Durable Objects, and
+`caches.default` is not available to it. What there is:
+
+- **Per-request memo** (`request-scope.ts`): the visitor and permissions,
+  once per request. Visitor data lives ONLY here.
+- **Per-isolate memory for PUBLIC data** (`publicGet(..., {ttlSeconds})`):
+  brand 60 s, posts 30 s. Best-effort (each isolate has its own copy) and
+  only resolved answers. Never a visitor's answer, never data a session gates.
+- **The Site Database** for anything that must be shared or durable.
 
 ## Recipes
 
@@ -204,8 +245,8 @@ Fake rows in `prisma/seed.sql` (example.com only). Rules below.
 
 ## Production rules
 
-- No state across requests: no module-level caches of visitor data, clients
-  or responses.
+- No visitor state across requests: visitor data only in the request scope;
+  module memory only for public answers (`publicGet` TTL).
 - Every platform call has a timeout (`platform.ts`, 8 s) and every page has a
   fallback for `null`: a slow API makes a section disappear, never a 500.
 - Keep the adapter `@astrojs/cloudflare` (14.x); `@astrojs/node|vercel|netlify`

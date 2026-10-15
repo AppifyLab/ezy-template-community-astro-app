@@ -14,8 +14,8 @@ import {app, type AppType} from './app';
  *
  * The visitor's own credentials (their `cookie` header) are passed through, so
  * `withViewer` sees the same visitor the page does. Never `fetch()` this
- * site's own hostname instead: deployed, that request reaches the EzyCommunity
- * App, not this Worker.
+ * site's own hostname instead: deployed, that request reaches the community
+ * app, not this Worker.
  */
 const FORWARDED = ['cookie', 'authorization', 'user-agent', 'accept-language'];
 

@@ -1,5 +1,5 @@
 /**
- * BROWSER-ONLY helpers for the visitor's own EzyCommunity session (platform
+ * BROWSER-ONLY helpers for the visitor's own community session (platform
  * docs `auth.md`, `uploads.md`). Imported by page `<script>`s and the portal;
  * never by server code.
  *
@@ -7,7 +7,8 @@
  *               cookies, the `X-XSRF-TOKEN` header on writes (production
  *               answers 419 without it), and ONE shared token refresh on 401.
  * - `logout`    signs the visitor out of the community (there is no logout page).
- * - `uploadFile` presign → PUT to the CDN → register; returns the public URL.
+ * - `storeFile` presign → PUT to the CDN (the Site API registers it).
+ * - `xsrfHeader` the CSRF header a forwarded member write must carry.
  *
  * The auth cookies are HttpOnly: never try to read, set or delete them.
  */
@@ -49,11 +50,11 @@ export async function logout(): Promise<void> {
   window.location.reload();
 }
 
-export interface UploadedFile {
-  url: string;
+/** A file now in the community's storage, waiting to be registered by the Site API. */
+export interface StoredFile {
+  key: string;
+  publicUrl: string;
   originalName: string;
-  fileType: string;
-  fileSize: number;
 }
 
 /** The first `message` of the platform's `{errors: [{message}]}` body, if any. */
@@ -69,11 +70,13 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
 }
 
 /**
- * Uploads ONE file straight from the browser to the community's CDN storage.
- * Signed-in members only. Presign right before the PUT: the signed URL expires
- * quickly. Throws an Error with a message fit to show the visitor.
+ * Puts ONE file straight from the browser into the community's storage:
+ * presign (as the signed-in member) → `PUT` the bytes. It does NOT register
+ * the file: `POST /site-api/uploads` does that on the server, as the same
+ * member, and stores only what the platform confirms. Presign right before
+ * the PUT: the signed URL expires quickly. Throws an Error fit to show.
  */
-export async function uploadFile(file: File): Promise<UploadedFile> {
+export async function storeFile(file: File): Promise<StoredFile> {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   const name = file.name.slice(0, 100);
 
@@ -98,27 +101,11 @@ export async function uploadFile(file: File): Promise<UploadedFile> {
   });
   if (!put.ok) throw new Error(`The upload failed (${put.status}). Try again.`);
 
-  const register = await appFetch('/api/gallery/uploads/register', {
-    method: 'POST',
-    headers: {'content-type': 'application/json'},
-    body: JSON.stringify({
-      key: signed.key,
-      public_url: signed.publicUrl,
-      original_name: name,
-      skip_gallery: true,
-    }),
-  });
-  if (!register.ok) throw new Error(await errorMessage(register, 'The upload could not be saved.'));
-  const data = (await register.json()).data as {
-    file_link: string;
-    file_type: string;
-    original_name: string;
-    file_size: number;
-  };
-  return {
-    url: data.file_link,
-    originalName: data.original_name ?? name,
-    fileType: data.file_type ?? 'file',
-    fileSize: Number(data.file_size ?? file.size),
-  };
+  return {key: signed.key, publicUrl: signed.publicUrl, originalName: name};
+}
+
+/** The `XSRF-TOKEN` cookie's value, for a server route that forwards a member write. */
+export function xsrfHeader(): Record<string, string> {
+  const token = xsrfToken();
+  return token ? {'x-xsrf-token': token} : {};
 }

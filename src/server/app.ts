@@ -1,16 +1,15 @@
-import {env} from 'cloudflare:workers';
 import {Hono} from 'hono';
-import {csrf} from 'hono/csrf';
 
 import type {Abilities} from '../lib/types';
-import {problem, withViewer} from './guards';
+import {config} from './config';
+import {problem, sameOrigin} from './guards';
 import {isPreview} from './platform';
 import {jobRoutes, MANAGE_JOBS} from './routes/jobs';
 import {memberRoutes} from './routes/members';
 import {postRoutes} from './routes/posts';
 import {siteRoutes} from './routes/site';
 import {uploadRoutes} from './routes/uploads';
-import {getViewerPermissions, grants} from './viewer';
+import {getViewer, getViewerPermissions, grants} from './viewer';
 
 /**
  * The Site API: this site's ONLY backend, one Hono app at `/site-api/*`.
@@ -31,27 +30,31 @@ import {getViewerPermissions, grants} from './viewer';
  *
  * Add a feature as a new `routes/<name>.ts` and one `.route()` line below,
  * CHAINED so `AppType` carries every route to the typed client. Errors are
- * JSON `{error, message}`. `csrf()` refuses cross-site form posts; keep it
- * unless a route must accept them (a webhook).
+ * JSON `{error, message}`. `sameOrigin` refuses every cross-site write; keep
+ * it (a webhook that must accept one gets its own app, mounted before it).
  */
 export const app = new Hono()
   .basePath('/site-api')
-  .use(csrf())
+  .use(sameOrigin)
 
   .get('/health', c =>
     c.json({
       ok: true,
       preview: isPreview(),
-      database: Boolean(env.DATABASE_URL),
-      communityKey: Boolean(env.EZY_COMMUNITY_KEY),
+      database: Boolean(config.databaseUrl),
+      communityKey: Boolean(config.communityKey),
     })
   )
 
   // `abilities` only decides what the UI SHOWS; every guarded route checks again.
-  .get('/me', withViewer, async c => {
-    const viewer = c.var.viewer;
-    const permissions =
-      viewer.state === 'member' ? await getViewerPermissions(c.req.raw) : new Set<string>();
+  // The two lookups run in PARALLEL (and once per request): one round trip.
+  .get('/me', async c => {
+    const [viewer, perms] = await Promise.all([
+      getViewer(c.req.raw),
+      getViewerPermissions(c.req.raw),
+    ]);
+    c.header('Cache-Control', 'private, no-store');
+    const permissions = viewer.state === 'member' ? perms : new Set<string>();
     const abilities: Abilities = {manageJobs: grants(permissions, MANAGE_JOBS)};
     return c.json({viewer, abilities});
   })

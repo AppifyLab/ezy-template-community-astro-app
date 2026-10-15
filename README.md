@@ -52,7 +52,7 @@ keeps serving.
 | `/`, `/about`, `/blog`, `/jobs` | **this site** |
 | `/portal/…`                | **this site** (the React app) |
 | `/site-api/…`              | **this site** (your API) |
-| `/login`, `/join`, `/feeds`, `/dashboard`, `/api` … | EzyCommunity |
+| `/login`, `/join`, `/feeds`, `/dashboard`, `/api` … | your community app |
 
 Link to the community app with ordinary links (`<a href="/feeds">`). A page
 you add under an app path is never reached by visitors.
@@ -64,7 +64,7 @@ Every page reads through your backend (`/site-api`), which talks to:
 - **your community's public data** — name, logo, blog posts (`/api/public/...`);
 - **who is visiting** — the visitor's own community session (`/api/auth/me`);
 - **your community, as the community** — members, feed, courses, events, with
-  your **Community Key** (`EZY_COMMUNITY_KEY`, set by the platform; read-only,
+  your **Community Key** (set by the platform; read-only,
   never email addresses or payment data);
 - **your Site Database** (`DATABASE_URL`, set by the platform) — jobs and
   uploads.
@@ -103,7 +103,7 @@ one later). Dropping or retyping a column waits for your approval at Publish.
 ## Running it on your machine
 
 ```bash
-cp .env.example .env     # set EZY_SITE_URL to your community's address
+cp .env.example .env     # set your community's address
 npm install
 npm run dev              # http://localhost:4321
 npm run build            # the Worker, into dist/
@@ -133,7 +133,9 @@ src/
   server/
     app.ts               the backend (Hono): mounts routes/
     routes/              site, posts, jobs, members, uploads
-    guards.ts            who may call what
+    guards.ts            who may call what (incl. the cross-site write guard)
+    config.ts            the platform's environment, read in one place
+    request-scope.ts     per-request memo of the visitor
     viewer.ts            who is visiting (their own session; Preview stand-in)
     platform.ts          calls to your community (public, Community Key)
     backend.ts           the backend, called in-process by pages

@@ -68,7 +68,8 @@ export const postRoutes = new Hono()
     if (search) params.set('search', search);
     const raw = await publicGet<{data?: unknown; meta?: {hasMore?: boolean; lastPage?: number}}>(
       c.req.url,
-      `/blog/post/all-posts?${params}`
+      `/blog/post/all-posts?${params}`,
+      {ttlSeconds: 30}
     ).catch(() => null);
     const result: PostsPage = {
       posts: list<Record<string, unknown>>(raw?.data).map(toSummary),
@@ -81,7 +82,8 @@ export const postRoutes = new Hono()
   .get('/:slug', async c => {
     const raw = await publicGet<Record<string, unknown>>(
       c.req.url,
-      `/blog/post/${encodeURIComponent(c.req.param('slug'))}/read`
+      `/blog/post/${encodeURIComponent(c.req.param('slug'))}/read`,
+      {ttlSeconds: 30}
     ).catch(() => null);
     if (!raw) return c.json({error: 'not_found', message: 'No such post.'}, 404);
     // Sanitized HERE, so no page can render the raw editor HTML by mistake.
@@ -92,7 +94,8 @@ export const postRoutes = new Hono()
   .get('/:slug/related', async c => {
     const raw = await publicGet<{posts?: unknown}>(
       c.req.url,
-      `/blog/post/${encodeURIComponent(c.req.param('slug'))}/related`
+      `/blog/post/${encodeURIComponent(c.req.param('slug'))}/related`,
+      {ttlSeconds: 60}
     ).catch(() => null);
     return c.json({posts: list<Record<string, unknown>>(raw?.posts).slice(0, 3).map(toSummary)});
   });

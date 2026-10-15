@@ -2,12 +2,13 @@ import {createMiddleware} from 'hono/factory';
 
 import type {PrismaClient} from '../generated/prisma/client';
 import type {Viewer} from '../lib/types';
-import {CommunityKeyMissing, PlatformError} from './platform';
+import {CommunityKeyMissing, isPreview, PlatformError} from './platform';
 import {getDb} from './db';
 import {getViewer, getViewerPermissions, grants} from './viewer';
 
 /**
- * The Site API's building blocks. Combine them in THIS order:
+ * The Site API's building blocks. `sameOrigin` runs on the whole app; per
+ * route, combine the rest in THIS order:
  *
  *   validator → withViewer → requireMember → requirePermission(codename) → withDb
  *
@@ -16,6 +17,42 @@ import {getViewer, getViewerPermissions, grants} from './viewer';
  */
 
 export type Problem = {error: string; message: string};
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+const hostOf = (origin: string) => {
+  try {
+    return new URL(origin).host;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Refuses every CROSS-SITE write (all methods but GET/HEAD/OPTIONS), whatever
+ * its content type: the browser's `Sec-Fetch-Site` must be `same-origin` (or
+ * `none`), and an `Origin` header must name this site's own host. Stricter
+ * than `hono/csrf`, which only checks form posts.
+ *
+ * Requests with neither header are not from a browser page (in-process
+ * `backend()` calls, server tools): they cannot carry a victim's cookies, so
+ * they pass. In the editor Preview the Preview's own gateway has already
+ * checked the origin and rewrites it, so this check is skipped there.
+ */
+export const sameOrigin = createMiddleware(async (c, next) => {
+  if (SAFE_METHODS.has(c.req.method) || isPreview()) return next();
+  const site = c.req.header('sec-fetch-site');
+  if (site && site !== 'same-origin' && site !== 'none') {
+    return c.json(problem('cross_site', 'Cross-site requests are not allowed.'), 403);
+  }
+  // Hosts, not full origins: behind a TLS-terminating proxy (local dev) the
+  // Worker can see `http://` while the browser sends `https://`.
+  const origin = c.req.header('origin');
+  if (origin && hostOf(origin) !== new URL(c.req.url).host) {
+    return c.json(problem('cross_site', 'Cross-site requests are not allowed.'), 403);
+  }
+  await next();
+});
 
 export const problem = (error: string, message: string): Problem => ({error, message});
 

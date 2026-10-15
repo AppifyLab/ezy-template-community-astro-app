@@ -122,7 +122,7 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
       // The server saw an expired access token but a refresh cookie: refresh
       // ONCE in the browser (the server never does), then re-render signed in.
       if (document.body.dataset.viewer === 'returning') {
-        const key = 'ezy:refreshed';
+        const key = 'site:refreshed';
         let first = true;
         try {
           first = !sessionStorage.getItem(key);
@@ -133,7 +133,7 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
         if (first) void refreshSession().then(ok => ok && window.location.reload());
       } else {
         try {
-          sessionStorage.removeItem('ezy:refreshed');
+          sessionStorage.removeItem('site:refreshed');
         } catch {
           // Storage blocked: nothing to clear.
         }

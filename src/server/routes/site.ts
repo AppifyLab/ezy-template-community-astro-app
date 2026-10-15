@@ -9,7 +9,9 @@ import {publicGet} from '../platform';
  * in that payload. Re-projected field by field.
  */
 export const siteRoutes = new Hono().get('/', async c => {
-  const raw = await publicGet<Record<string, unknown>>(c.req.url, '/site/v1/initial-data').catch(
+  const raw = await publicGet<Record<string, unknown>>(c.req.url, '/site/v1/initial-data', {
+    ttlSeconds: 60,
+  }).catch(
     () => null
   );
   const site: Site | null = raw

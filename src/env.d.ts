@@ -3,7 +3,7 @@
  * `import {env} from 'cloudflare:workers'` in SERVER code only.
  *
  *   EZY_SITE_URL       a plain var: the community's platform origin
- *                      (`https://<sub>.ezycommunity.com`). Used in the Preview
+ *                      (`https://<community>.<platform domain>`). Used in the Preview
  *                      and locally; deployed, the request's own origin wins
  *                      (see `siteOrigin` in src/server/platform.ts).
  *   EZY_PREVIEW        `'1'` ONLY in the editor Preview (no visitor session

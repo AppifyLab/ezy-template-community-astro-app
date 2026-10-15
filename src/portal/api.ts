@@ -1,13 +1,16 @@
 import {hc} from 'hono/client';
 
+import {xsrfHeader} from '../lib/browser-session';
 import type {AppType} from '../server/app';
 
 /**
  * The typed Site API client for the browser: same origin, so the visitor's
- * cookies ride along and `hono/csrf` sees a same-origin request. Only the TYPE
- * of the server app is imported — no server code reaches the browser.
+ * cookies ride along and `sameOrigin` sees a same-origin request. It also
+ * sends the community's CSRF token, which a Site API route that forwards a
+ * member write to the platform passes on (`POST /uploads`). Only the TYPE of
+ * the server app is imported — no server code reaches the browser.
  */
-export const api = hc<AppType>('/')['site-api'];
+export const api = hc<AppType>('/', {headers: xsrfHeader})['site-api'];
 
 /** The JSON body of a Site API response, or an Error carrying its message. */
 export async function read<T>(response: Promise<Response>): Promise<T> {
