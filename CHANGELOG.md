@@ -4,6 +4,13 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
+## 0.3.1
+
+- `npm run dev` generates the Prisma client first. A fresh copy (the editor
+  Preview, a new clone) failed with "Failed to load url
+  ../generated/prisma/client" because the client is git-ignored and only the
+  build script generated it.
+
 ## 0.3.0
 
 - `src/platform/` is the template's managed core (platform API client,
