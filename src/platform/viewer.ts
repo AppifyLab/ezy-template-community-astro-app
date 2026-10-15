@@ -1,5 +1,5 @@
-import type {Viewer} from '../lib/types';
-import {isPreview, PLATFORM_HEADERS, siteOrigin} from './platform';
+import type {Viewer} from './types';
+import {isPreview, PLATFORM_HEADERS, siteOrigin} from './api';
 import {scoped} from './request-scope';
 
 /**
@@ -14,7 +14,7 @@ import {scoped} from './request-scope';
  *   STATUS only (platform doc `auth.md`):
  *     200 → `member` (profile active) or `applicant` (pending / inactive)
  *     401 → `returning` if the refresh cookie is there (the BROWSER refreshes,
- *           `src/lib/browser-session.ts`), else `guest`
+ *           `./browser.ts`), else `guest`
  *     403 / 404 / anything else → `guest`
  *
  * EDITOR PREVIEW (`config.preview`)

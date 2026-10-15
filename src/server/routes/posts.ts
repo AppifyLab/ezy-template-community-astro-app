@@ -1,9 +1,9 @@
 import {Hono} from 'hono';
 import {validator} from 'hono/validator';
 
-import {sanitizeHtml} from '../../lib/sanitize';
+import {sanitizeHtml} from '../../platform/sanitize';
 import type {Post, PostAuthor, PostsPage, PostSummary, PostTerm} from '../../lib/types';
-import {publicGet} from '../platform';
+import {publicGet} from '../../platform/api';
 
 /**
  * The community's blog, from the PUBLIC API (`/api/public/blog/...`):

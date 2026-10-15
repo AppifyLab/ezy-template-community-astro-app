@@ -6,12 +6,7 @@
  * nothing the platform adds later (a member's email, say) reaches a page.
  */
 
-export interface Site {
-  id: number;
-  name: string;
-  favIcon: string | null;
-  logo: string | null;
-}
+export type {Site, Viewer, ViewerState} from '../platform/types';
 
 export interface PostAuthor {
   id: number;
@@ -73,22 +68,6 @@ export interface JobsPage {
   jobs: JobSummary[];
   /** Pass back as `?before=` for the next page; null on the last one. */
   nextBefore: number | null;
-}
-
-export type ViewerState = 'member' | 'applicant' | 'returning' | 'guest';
-
-export interface Viewer {
-  state: ViewerState;
-  /** The community profile (`profile.id`), when signed in. */
-  profileId: number | null;
-  /** `/profile/<slug>` in the App. */
-  profileSlug: string | null;
-  name: string | null;
-  avatar: string | null;
-  /** `profile.role.slug`: match against `/api/site/v1/roles`. Display only. */
-  roleSlug: string | null;
-  /** True only in the editor Preview's stand-in session (see `src/server/viewer.ts`). */
-  preview: boolean;
 }
 
 /** What the visitor may do on THIS site (derived from their Role Manager codenames). */

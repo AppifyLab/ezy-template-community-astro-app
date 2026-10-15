@@ -1,7 +1,7 @@
 import {Hono} from 'hono';
 
 import type {Site} from '../../lib/types';
-import {publicGet} from '../platform';
+import {publicGet} from '../../platform/api';
 
 /**
  * `GET /site-api/site` — the community's brand: name, logo, favicon, read from

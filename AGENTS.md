@@ -37,19 +37,27 @@ browser ──► /portal (React) ───────── fetch /site-api �
   calls the platform or the database itself.
 - **The portal** (`/portal/*`, React) calls the same routes from the browser
   with the typed `hc` client (`src/portal/api.ts`).
+- **`src/platform/` is the template's MANAGED core** (platform client, auth,
+  guards, permissions, browser session, sanitizer, config). Never edit it:
+  `npm run platform -- upgrade` replaces it wholesale. Build on it from your
+  own code (`src/server/`, `src/pages/`, `src/portal/`, `src/content/`).
+- **Static where it can be, dynamic where it must be.** Marketing pages
+  (`/`, `/about`) are PRERENDERED: built once, served as files by the CDN's
+  asset layer before the Worker runs. Blog and jobs are server-rendered
+  (fresh data, real 404s, crawlable search). The dashboard is a client app.
 - **One Worker, one build, one deploy.** Pages, the Site API and the portal
   always go live together. Don't add a second Worker, a service binding, a
   queue, KV/R2/D1 or Durable Objects: the platform gives a Site none of them.
 
 | Path                    | What                                     | Code                                  |
 | ----------------------- | ---------------------------------------- | ------------------------------------- |
-| `/`                     | home, as sections                        | `src/pages/index.astro`               |
-| `/about`                | static content page                      | `src/pages/about.astro`               |
+| `/`                     | home, as sections (STATIC)               | `src/pages/index.astro`               |
+| `/about`                | content page (STATIC)                    | `src/pages/about.astro`               |
 | `/blog`, `/blog/<slug>` | the community's blog (publication style) | `src/pages/blog/`                     |
 | `/jobs`, `/jobs/<slug>` | job board: search, filters, detail       | `src/pages/jobs/`                     |
 | `/portal/*`             | members' dashboard (React)               | `src/portal/`, `src/pages/portal/`    |
 | `/site-api/*`           | the backend (Hono)                       | `src/server/app.ts`, `src/server/routes/` |
-| —                       | Site Database (Prisma Postgres)          | `prisma/`, `src/server/db.ts`         |
+| —                       | Site Database (Prisma Postgres)          | `prisma/`, `src/platform/db.ts`         |
 | —                       | words, nav, home sections                | `src/content/site.ts`                 |
 
 Every other path on the hostname (`/login`, `/register`, `/join`, `/feeds`,
@@ -59,7 +67,7 @@ router link, and never create a page under it.
 
 ## Environment
 
-Read ONLY through `config` (`src/server/config.ts`), in server code. The
+Read ONLY through `config` (`src/platform/config.ts`), in server code. The
 names in the first column are the hosting platform's contract: it sets them,
 you cannot rename or add them. Never read `env` anywhere else.
 
@@ -70,11 +78,11 @@ you cannot rename or add them. Never read `env` anywhere else.
 | `communityKey` | `EZY_COMMUNITY_KEY` | the live key (secret)       | the editor key       | optional              |
 | `databaseUrl`  | `DATABASE_URL`      | live Site Database (secret) | the Preview Database | optional              |
 
-- **Which origin to call** (`siteOrigin` in `src/server/platform.ts`): deployed,
+- **Which origin to call** (`siteOrigin` in `src/platform/api.ts`): deployed,
   the request's OWN origin. The visitor may be on the community's custom
   domain, and a live Site may only fetch the host it was visited on. In the
   Preview and on your machine, `config.siteUrl`. Always go through
-  `platform.ts` / `viewer.ts`; never build a platform URL yourself.
+  `src/platform/api.ts` / `viewer.ts`; never build a platform URL yourself.
 - No `databaseUrl` = Site Database not enabled: routes answer 503 (`withDb`);
   ask the owner to enable it. No key: 503 `community_key_missing`.
 - Never send a secret to the browser, log it, write it to a file (`.env`,
@@ -90,7 +98,7 @@ This site has NO login of its own. Visitors sign in on the community
 `redirectTo` is a URL-encoded PATH). Never build a login, sign-up, password or
 account page, never ask for a password, never handle tokens.
 
-- **Deployed:** `getViewer(request)` (`src/server/viewer.ts`) forwards the
+- **Deployed:** `getViewer(request)` (`src/platform/viewer.ts`) forwards the
   visitor's `cookie` header, unchanged, to `/api/auth/me` on the community's
   own host and branches on the STATUS. States: `member`, `applicant` (pending:
   link to `/join`, no member content), `returning` (access token expired; the
@@ -98,7 +106,7 @@ account page, never ask for a password, never handle tokens.
   Permissions: `getViewerPermissions()` → `/api/auth/me/permissions`;
   `grants(perms, codename)` mirrors the Role Manager's wildcards.
 - **How the backend finds the visitor (fast, once per request):**
-  1. `src/middleware.ts` opens a per-request scope (`request-scope.ts`,
+  1. `src/middleware.ts` opens a per-request scope (`src/platform/request-scope.ts`,
      `AsyncLocalStorage`) around every page and `/site-api` call.
   2. `getViewer()` looks at the auth cookies by NAME only (never parsed,
      verified or stored: they are the platform's HttpOnly tokens). No access
@@ -117,7 +125,7 @@ account page, never ask for a password, never handle tokens.
   Database. Platform reads still use the Community Key, server to server.
   Browser-only App calls (uploads, sign out) cannot run there: the UI says so.
   Never derive a stand-in from anything but `config.preview`.
-- **Browser:** `src/lib/browser-session.ts`: `appFetch()` (sends
+- **Browser:** `src/platform/browser.ts`: `appFetch()` (sends
   `X-XSRF-TOKEN` on writes, ONE shared `/api/auth/refresh` on 401),
   `logout()`, `storeFile()`, `xsrfHeader()`.
 - **Cross-site writes are refused** by `sameOrigin` on the whole Site API
@@ -166,7 +174,7 @@ unavailable, never retry. Always `skip_gallery: true`.
 There is no shared cache for a Site: no KV, no Redis, no Durable Objects, and
 `caches.default` is not available to it. What there is:
 
-- **Per-request memo** (`request-scope.ts`): the visitor and permissions,
+- **Per-request memo** (`src/platform/request-scope.ts`): the visitor and permissions,
   once per request. Visitor data lives ONLY here.
 - **Per-isolate memory for PUBLIC data** (`publicGet(..., {ttlSeconds})`):
   brand 60 s, posts 30 s. Best-effort (each isolate has its own copy) and
@@ -179,7 +187,7 @@ There is no shared cache for a Site: no KV, no Redis, no Durable Objects, and
 1. `src/server/routes/<name>.ts`: `export const <name>Routes = new Hono()…`,
    routes CHAINED. Guards in this order: `validator` → `withViewer` →
    `requireMember` → `requirePermission(codename)` → `withDb`
-   (`src/server/guards.ts`).
+   (`src/platform/guards.ts`).
 2. Mount it in `src/server/app.ts`: `.route('/<name>', <name>Routes)` (chained).
 3. Shapes in `src/lib/types.ts`. Select columns explicitly; JSON errors
    `{error, message}`; lists keyset-paged (`?before=<id>`, `take: n + 1`,
@@ -195,15 +203,30 @@ There is no shared cache for a Site: no KV, no Redis, no Durable Objects, and
    "Older" follows the cursor (`?before=`).
 3. Detail page `src/pages/<name>/[slug].astro`: unknown → `Astro.response.status
    = 404` and `<NotFound>`. Plain text renders as paragraphs; HTML only after
-   `sanitizeHtml` (`src/lib/sanitize.ts`).
+   `sanitizeHtml` (`src/platform/sanitize.ts`).
 4. Add it to `NAV` in `src/content/site.ts`. Search on a growing table: a
    bounded `contains` is fine for hundreds of rows; add a trigram/full-text
    index (a migration) before it holds thousands.
 
-### A static content page (like `/about`)
-`src/pages/<name>.astro` with `pageContext` (brand + visitor) and words from
-`src/content/site.ts`. It stays server-rendered so the header knows who is
-signed in; keep it free of data calls. Add it to `NAV`.
+### A static marketing page (like `/`, `/about`): the fastest kind
+1. `src/pages/<name>.astro` with `export const prerender = true;` and
+   `const {site, viewer} = await staticContext(Astro.request);`, then
+   `<Base site={site} viewer={viewer} isStatic>`.
+2. It is built ONCE (the Build knows the community's origin, so the brand is
+   real) and served as a file: no server work per visit. It knows no visitor:
+   it renders signed out, and the browser fills in the rest after load:
+   - the header (`src/platform/static-page.ts` via `/site-api/me`);
+   - `data-member-only` / `data-guest-only` elements show or hide per visitor;
+   - `data-brand-text="… {name} …"` elements update if the community renamed;
+   - data that changes often: a `data-live` section filled by a small script
+     from a Site API route (see the posts/jobs sections in `index.astro`),
+     built with `textContent` only, hidden when empty.
+3. Never put visitor data, member-only content or anything secret in a
+   static page's HTML: it is one file served to everyone.
+4. Words in `src/content/site.ts`; add the page to `NAV`.
+
+Use server rendering instead when the page's MAIN content is data that must
+be fresh or crawlable per URL (a list with search, a detail page).
 
 ### A dashboard screen (like `/portal/jobs`)
 1. Its Site API routes (above), guarded by `requireMember` and, for admin
@@ -221,10 +244,45 @@ sign-in prompt otherwise (see `src/pages/portal/[...path].astro`). The data
 route enforces it again. Codenames used here: `community:site:update`
 (manage jobs).
 
+### A custom app (a CRM, a booking tool, an internal tracker)
+1. **Decide who may do what with EXISTING codenames.** A Site cannot create
+   roles or codenames; the community's admins manage roles in its dashboard.
+   Map each feature to the narrowest codename in `CODENAMES`
+   (`src/platform/permissions.ts`): e.g. CRM contacts → `MEMBER_READ` to view,
+   `MEMBER_UPDATE` to edit; reports → `ANALYTICS_READ`; app settings →
+   `SITE_UPDATE`. `getRoles()` (admins with `community:rm:read` only) lists
+   every role and what it grants in THIS community.
+2. **Tables** in `prisma/schema.prisma`: your own records keyed by the
+   platform's ids (`profileId` from the viewer or the members directory),
+   never a copy of member emails. `createdBy`/`updatedBy` = `viewer.profileId`.
+3. **Routes** `src/server/routes/<app>.ts`: every read and write behind
+   `withViewer → requireMember → requirePermission(CODENAMES.X)`; select
+   columns explicitly; keyset pagination; validate every input.
+4. **Screens** in the dashboard (`src/portal/routes.tsx`), shown from
+   `abilities` in `/site-api/me` (add one per feature).
+5. People data comes from the platform, read-only: the members directory
+   (`/team/members/list`) with the Community Key, after `requireMember`.
+   Writes to the community itself (posts, enrolments) are not available to a
+   Site: keep your own state in the Site Database.
+
 ### A new table
 Edit `prisma/schema.prisma`, `npx prisma migrate dev --create-only --name <change>`,
 wrap the new `migration.sql` in `BEGIN;` … `COMMIT;`, `npx prisma migrate dev`.
 Fake rows in `prisma/seed.sql` (example.com only). Rules below.
+
+## Keeping current with the platform and the template
+
+- **Platform docs change behind the scenes.** Before relying on an endpoint,
+  read the LIVE docs (top of this file). `npm run platform -- docs
+  [--site https://<host>]` saves them to `.platform/docs/` (git-ignored) with
+  their version; read `changes.md` first. Every doc title carries the same
+  version (`(v1a2b3c4d)`): if it differs from what you read before, re-read.
+- **The template moves on too.** `template.json` records this site's template
+  version. `npm run platform -- check` tells whether a newer release exists;
+  `npm run platform -- upgrade` applies it: `src/platform/` is replaced, every
+  other file is 3-way merged with your changes (conflicts are listed, marked
+  `<<<<<<<`). Commit first; then read `CHANGELOG.md`, resolve conflicts,
+  `npm install`, `npm run build`.
 
 ## Site Database (Prisma Postgres)
 
@@ -247,7 +305,7 @@ Fake rows in `prisma/seed.sql` (example.com only). Rules below.
 
 - No visitor state across requests: visitor data only in the request scope;
   module memory only for public answers (`publicGet` TTL).
-- Every platform call has a timeout (`platform.ts`, 8 s) and every page has a
+- Every platform call has a timeout (`src/platform/api.ts`, 8 s) and every page has a
   fallback for `null`: a slow API makes a section disappear, never a 500.
 - Keep the adapter `@astrojs/cloudflare` (14.x); `@astrojs/node|vercel|netlify`
   are refused. npm only, `package-lock.json` committed (the Build runs

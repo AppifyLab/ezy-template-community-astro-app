@@ -22,9 +22,16 @@ interface Props {
   description?: string;
   /** Extra <head> tags, e.g. og:image on a post. */
   image?: string | null;
+  /**
+   * A PRERENDERED page (`export const prerender = true`): built once, served
+   * as a static file, so it knows no visitor. The header then renders the
+   * signed-out view and the browser fills in the visitor (`/site-api/me`) and
+   * a renamed community (`/site-api/site`) after load.
+   */
+  isStatic?: boolean;
 }
 
-const {site, viewer, title, description, image} = Astro.props;
+const {site, viewer, title, description, image, isStatic = false} = Astro.props;
 const name = site?.name ?? 'Community';
 const fullTitle = title ? `${title} · ${name}` : name;
 const path = Astro.url.pathname;
@@ -44,12 +51,12 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
     {image && <meta property="og:image" content={image} />}
     {site?.favIcon && <link rel="icon" href={site.favIcon} />}
   </head>
-  <body data-viewer={viewer.state}>
+  <body data-viewer={viewer.state} data-static={isStatic ? '1' : undefined}>
     <header class="site-header">
       <div class="wrap site-header-inner">
         <a href="/" class="brand">
           <BrandMark site={site} />
-          <span class="brand-name">{name}</span>
+          <span class="brand-name" data-brand-text="{name}" data-built-name={name}>{name}</span>
         </a>
         <nav class="site-nav" aria-label="Main">
           {NAV.map(item => (
@@ -57,13 +64,15 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
               {item.label}
             </a>
           ))}
-          {viewer.state === 'member' && (
-            <a href="/portal" class:list={{active: active('/portal')}}>
-              Dashboard
-            </a>
-          )}
+          <a
+            href="/portal"
+            class:list={{active: active('/portal')}}
+            data-member-only
+            hidden={viewer.state !== 'member'}>
+            Dashboard
+          </a>
         </nav>
-        <div class="session">
+        <div class="session" data-session>
           {viewer.state === 'member' ? (
             <>
               <a class="button ghost small-button" href="/feeds">
@@ -108,7 +117,7 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
 
     <footer class="site-footer">
       <div class="wrap site-footer-inner">
-        <span>© {new Date().getUTCFullYear()} {name}</span>
+        <span data-brand-text="© {year} {name}">© {new Date().getUTCFullYear()} {name}</span>
         <nav class="footer-nav" aria-label="Footer">
           {NAV.map(item => <a href={item.href}>{item.label}</a>)}
           <a href="/feeds">Community</a>
@@ -117,7 +126,10 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
     </footer>
 
     <script>
-      import {logout, refreshSession} from '../lib/browser-session';
+      import {logout, refreshSession} from '../platform/browser';
+      import {hydrateStaticPage} from '../platform/static-page';
+
+      if (document.body.dataset.static === '1') void hydrateStaticPage();
 
       // The server saw an expired access token but a refresh cookie: refresh
       // ONCE in the browser (the server never does), then re-render signed in.

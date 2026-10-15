@@ -1,12 +1,12 @@
 import {defineMiddleware} from 'astro:middleware';
 
-import {SELF_FETCH_HEADER} from './server/platform';
-import {inRequestScope} from './server/request-scope';
+import {SELF_FETCH_HEADER} from './platform/api';
+import {inRequestScope} from './platform/request-scope';
 
 /**
  * Runs before every page and every `/site-api` call:
  *
- * 1. Opens the request's memo (`request-scope.ts`), so the visitor is looked
+ * 1. Opens the request's memo (`src/platform/request-scope.ts`), so the visitor is looked
  *    up once per request.
  * 2. Stops a page from fetching ITSELF forever.
  *

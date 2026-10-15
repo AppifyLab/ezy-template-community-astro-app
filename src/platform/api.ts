@@ -9,7 +9,7 @@ import {config} from './config';
  *   communityGet(url, path)   `/api/site/v1/...` as the COMMUNITY, with the
  *                             Community Key (`config.communityKey`): read-only,
  *                             member level, never emails or payment data
- *   fetchAsVisitor(req, path) `/api/...` as the VISITOR (src/server/viewer.ts)
+ *   fetchAsVisitor(req, path) `/api/...` as the VISITOR (./viewer.ts)
  *
  * Server code only: `env` never reaches the browser, the key is never logged.
  */

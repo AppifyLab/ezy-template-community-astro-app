@@ -81,6 +81,21 @@ What you store in your Site Database is yours — and your responsibility.
 Deployed code can reach only your own community's address and your Site
 Database; calls to any other service are blocked.
 
+## Fast pages
+
+Home and About are **static**: built once and served as files, with no server
+work per visit. The header and the "latest posts / open roles" sections fill
+in after load. Blog and jobs are rendered per request so they are always
+fresh. Republish to refresh the static pages' text and brand.
+
+## Staying up to date
+
+```bash
+npm run platform -- check     # is a newer template release out?
+npm run platform -- upgrade   # apply it, keeping your changes (commit first)
+npm run platform -- docs --site https://<your community>   # latest platform docs
+```
+
 ## Changing the database
 
 ```bash
@@ -116,33 +131,23 @@ Database panel) in `DATABASE_URL` there.
 ## Where things are
 
 ```
-prisma/
-  schema.prisma          your tables: jobs, uploads
-  migrations/            one folder per change, applied in order at Publish
-  seed.sql               fake data for the Preview Database
+template.json            which template version this site is on
+CHANGELOG.md             template releases
+scripts/platform.mjs     npm run platform -- docs | check | upgrade
+prisma/                  your tables, migrations, seed data
 src/
   content/site.ts        navigation, home sections, about copy
-  pages/                 the views (server-rendered)
-    index.astro          home
-    about.astro          about
-    blog/                publication + article pages
-    jobs/                job board + job pages
+  pages/                 the views
+    index.astro          home (static)
+    about.astro          about (static)
+    blog/, jobs/         server-rendered lists, search, detail pages
     portal/[...path].astro  hosts the dashboard (members only)
     site-api/[...path].ts   hands every /site-api/* request to the backend
-  portal/                the dashboard (React): screens, typed API client
-  server/
-    app.ts               the backend (Hono): mounts routes/
-    routes/              site, posts, jobs, members, uploads
-    guards.ts            who may call what (incl. the cross-site write guard)
-    config.ts            the platform's environment, read in one place
-    request-scope.ts     per-request memo of the visitor
-    viewer.ts            who is visiting (their own session; Preview stand-in)
-    platform.ts          calls to your community (public, Community Key)
-    backend.ts           the backend, called in-process by pages
-    page.ts              brand + visitor for every page
-    db.ts                the Site Database client
-  lib/                   shared types, browser session + uploads, formatting
-  middleware.ts          stops a server fetch from looping back into the site
+  portal/                the dashboard (React)
+  server/                YOUR backend: app.ts (Hono), routes/, page.ts, backend.ts
+  platform/              the template's MANAGED core (auth, platform API,
+                         guards, permissions): replaced on upgrade, don't edit
+  lib/                   shared types and formatting
 ```
 
 ## Getting help

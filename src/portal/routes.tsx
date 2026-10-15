@@ -2,7 +2,7 @@ import {useInfiniteQuery, useMutation, useQuery, useQueryClient} from '@tanstack
 import {createRootRoute, createRoute, Link, Outlet} from '@tanstack/react-router';
 import {type ChangeEvent, type FormEvent, useState} from 'react';
 
-import {storeFile} from '../lib/browser-session';
+import {storeFile} from '../platform/browser';
 import {
   type Abilities,
   type Job,

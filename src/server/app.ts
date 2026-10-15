@@ -1,15 +1,15 @@
 import {Hono} from 'hono';
 
 import type {Abilities} from '../lib/types';
-import {config} from './config';
-import {problem, sameOrigin} from './guards';
-import {isPreview} from './platform';
+import {config} from '../platform/config';
+import {problem, sameOrigin} from '../platform/guards';
+import {isPreview} from '../platform/api';
 import {jobRoutes, MANAGE_JOBS} from './routes/jobs';
 import {memberRoutes} from './routes/members';
 import {postRoutes} from './routes/posts';
 import {siteRoutes} from './routes/site';
 import {uploadRoutes} from './routes/uploads';
-import {getViewer, getViewerPermissions, grants} from './viewer';
+import {getViewer, getViewerPermissions, grants} from '../platform/viewer';
 
 /**
  * The Site API: this site's ONLY backend, one Hono app at `/site-api/*`.

@@ -2,16 +2,19 @@
 import BrandMark from '../components/BrandMark.astro';
 import {ABOUT, withName} from '../content/site';
 import Base from '../layouts/Base.astro';
-import {pageContext} from '../server/page';
+import {staticContext} from '../server/page';
 
-const {site, viewer} = await pageContext(Astro.request, Astro.response);
+// Static: built once, served as a file. The header fills the visitor in, in the browser.
+export const prerender = true;
+
+const {site, viewer} = await staticContext(Astro.request);
 const name = site?.name ?? 'Community';
 ---
 
-<Base site={site} viewer={viewer} title="About" description={withName(ABOUT.lede, name)}>
+<Base site={site} viewer={viewer} isStatic title="About" description={withName(ABOUT.lede, name)}>
   <main class="wrap narrow section">
     <BrandMark site={site} size={56} />
-    <h1>{withName(ABOUT.title, name)}</h1>
+    <h1 data-brand-text={ABOUT.title}>{withName(ABOUT.title, name)}</h1>
     <p class="lede">{withName(ABOUT.lede, name)}</p>
     {
       ABOUT.sections.map(section => (
@@ -22,13 +25,7 @@ const name = site?.name ?? 'Community';
       ))
     }
     <div class="actions">
-      {
-        viewer.state === 'member' ? (
-          <a class="button" href="/feeds">Open the community</a>
-        ) : (
-          <a class="button" href="/register?redirectTo=%2Fabout">Join {name}</a>
-        )
-      }
+      <a class="button" href="/register?redirectTo=%2Fabout" data-brand-text="Join {name}">Join {name}</a>
       <a class="button ghost" href="/blog">Read the blog</a>
     </div>
   </main>

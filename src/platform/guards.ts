@@ -1,8 +1,8 @@
 import {createMiddleware} from 'hono/factory';
 
 import type {PrismaClient} from '../generated/prisma/client';
-import type {Viewer} from '../lib/types';
-import {CommunityKeyMissing, isPreview, PlatformError} from './platform';
+import type {Viewer} from './types';
+import {CommunityKeyMissing, isPreview, PlatformError} from './api';
 import {getDb} from './db';
 import {getViewer, getViewerPermissions, grants} from './viewer';
 

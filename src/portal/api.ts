@@ -1,6 +1,6 @@
 import {hc} from 'hono/client';
 
-import {xsrfHeader} from '../lib/browser-session';
+import {xsrfHeader} from '../platform/browser';
 import type {AppType} from '../server/app';
 
 /**

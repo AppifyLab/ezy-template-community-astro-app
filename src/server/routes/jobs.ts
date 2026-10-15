@@ -2,7 +2,8 @@ import {Hono} from 'hono';
 import {validator} from 'hono/validator';
 
 import {JOB_TYPES, type Job, type JobsPage} from '../../lib/types';
-import {problem, requireMember, requirePermission, withDb, withViewer} from '../guards';
+import {problem, requireMember, requirePermission, withDb, withViewer} from '../../platform/guards';
+import {CODENAMES} from '../../platform/permissions';
 
 /**
  * The job board, stored in the Site Database (table `jobs`).
@@ -24,7 +25,7 @@ import {problem, requireMember, requirePermission, withDb, withViewer} from '../
  */
 
 /** Who may post and edit jobs: the community's site admins. */
-export const MANAGE_JOBS = 'community:site:update';
+export const MANAGE_JOBS = CODENAMES.SITE_UPDATE;
 
 const PAGE_SIZE = 20;
 

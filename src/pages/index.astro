@@ -1,54 +1,42 @@
 ---
 /**
- * The home page, as sections: hero, features, latest posts, open roles, a
- * quote and a closing call to action. Words in `src/content/site.ts`; data
- * from the Site API in-process (posts from the community, jobs from the Site
- * Database). A section with no data hides itself.
+ * The home page: PRERENDERED (built once, served as a static file, no server
+ * work per visit) and made of sections. Words in `src/content/site.ts`.
+ *
+ * What changes often is filled in by the browser after load, from the Site API:
+ *   - the visitor (`<Base isStatic>`): members see "Open the community"
+ *     (`data-member-only`), guests "Join" (`data-guest-only`)
+ *   - latest posts and open roles (`data-live` sections, below)
+ * A section with no data stays hidden.
  */
 import BrandMark from '../components/BrandMark.astro';
-import PostCard from '../components/PostCard.astro';
 import {HOME, withName} from '../content/site';
 import Base from '../layouts/Base.astro';
-import type {JobsPage, PostsPage} from '../lib/types';
-import {read} from '../server/backend';
-import {pageContext} from '../server/page';
+import {staticContext} from '../server/page';
 
-const {api, site, viewer} = await pageContext(Astro.request, Astro.response);
-const [posts, jobs] = await Promise.all([
-  read<PostsPage>(api.posts.$get({query: {page: '1', perPage: '3', search: ''}})),
-  read<JobsPage>(api.jobs.$get({query: {search: '', type: '', remote: '', before: undefined}})),
-]);
+export const prerender = true;
+
+const {site, viewer} = await staticContext(Astro.request);
 const name = site?.name ?? 'Community';
-const member = viewer.state === 'member';
 ---
 
-<Base site={site} viewer={viewer}>
+<Base site={site} viewer={viewer} isStatic>
   <main>
     <section class="hero">
       <div class="wrap center">
         <BrandMark site={site} size={72} />
-        <p class="eyebrow">{withName(HOME.hero.eyebrow, name)}</p>
+        <p class="eyebrow" data-brand-text={HOME.hero.eyebrow}>{withName(HOME.hero.eyebrow, name)}</p>
         <h1>{HOME.hero.title}</h1>
         <p class="lede">{HOME.hero.body}</p>
         {/* Join, Log in and the feed are the community app: plain links, always. */}
-        <div class="actions">
-          {
-            member ? (
-              <>
-                <a class="button" href="/feeds">Open the community</a>
-                <a class="button ghost" href="/portal">Your dashboard</a>
-              </>
-            ) : viewer.state === 'applicant' ? (
-              <a class="button" href="/join">Finish joining</a>
-            ) : (
-              <>
-                <a class="button" href="/register">Join {name}</a>
-                <a class="button ghost" href="/login">Log in</a>
-              </>
-            )
-          }
+        <div class="actions" data-guest-only>
+          <a class="button" href="/register" data-brand-text="Join {name}">Join {name}</a>
+          <a class="button ghost" href="/login">Log in</a>
         </div>
-        {member && <p class="muted small">Welcome back, {viewer.name}.</p>}
+        <div class="actions" data-member-only hidden>
+          <a class="button" href="/feeds">Open the community</a>
+          <a class="button ghost" href="/portal">Your dashboard</a>
+        </div>
       </div>
     </section>
 
@@ -66,43 +54,21 @@ const member = viewer.state === 'member';
       </div>
     </section>
 
-    {
-      (posts?.posts.length ?? 0) > 0 && (
-        <section class="wrap section">
-          <div class="section-head">
-            <h2>Latest from the blog</h2>
-            <a href="/blog">All posts →</a>
-          </div>
-          <div class="grid grid-3">
-            {posts!.posts.map(post => <PostCard post={post} />)}
-          </div>
-        </section>
-      )
-    }
+    <section class="wrap section" data-live="posts" hidden>
+      <div class="section-head">
+        <h2>Latest from the blog</h2>
+        <a href="/blog">All posts →</a>
+      </div>
+      <div class="grid grid-3" data-list></div>
+    </section>
 
-    {
-      (jobs?.jobs.length ?? 0) > 0 && (
-        <section class="wrap section">
-          <div class="section-head">
-            <h2>Open roles</h2>
-            <a href="/jobs">All jobs →</a>
-          </div>
-          <ul class="job-list">
-            {jobs!.jobs.slice(0, 3).map(job => (
-              <li>
-                <a class="job-row" href={`/jobs/${encodeURIComponent(job.slug)}`}>
-                  <div>
-                    <h3>{job.title}</h3>
-                    <p class="muted">{job.company} · {job.location}</p>
-                  </div>
-                  {job.remote && <span class="chip chip-tag">Remote</span>}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )
-    }
+    <section class="wrap section" data-live="jobs" hidden>
+      <div class="section-head">
+        <h2>Open roles</h2>
+        <a href="/jobs">All jobs →</a>
+      </div>
+      <ul class="job-list" data-list></ul>
+    </section>
 
     <section class="wrap narrow section center">
       <blockquote class="quote">
@@ -111,18 +77,78 @@ const member = viewer.state === 'member';
       </blockquote>
     </section>
 
-    {
-      !member && (
-        <section class="wrap section">
-          <div class="card cta">
-            <div>
-              <h2>{withName(HOME.cta.title, name)}</h2>
-              <p class="muted">{HOME.cta.body}</p>
-            </div>
-            <a class="button" href="/register">Join now</a>
-          </div>
-        </section>
-      )
-    }
+    <section class="wrap section" data-guest-only>
+      <div class="card cta">
+        <div>
+          <h2 data-brand-text={HOME.cta.title}>{withName(HOME.cta.title, name)}</h2>
+          <p class="muted">{HOME.cta.body}</p>
+        </div>
+        <a class="button" href="/register">Join now</a>
+      </div>
+    </section>
   </main>
 </Base>
+
+<script>
+  import {formatDate} from '../lib/format';
+  import type {JobsPage, PostsPage} from '../lib/types';
+
+  /** One element with text: never HTML from an answer. */
+  const el = <K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = '') => {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text) node.textContent = text;
+    return node;
+  };
+
+  async function live<T>(name: string, path: string, render: (data: T, list: HTMLElement) => number) {
+    const section = document.querySelector<HTMLElement>(`[data-live="${name}"]`);
+    const list = section?.querySelector<HTMLElement>('[data-list]');
+    if (!section || !list) return;
+    try {
+      const res = await fetch(path, {headers: {accept: 'application/json'}});
+      if (!res.ok) return;
+      if (render((await res.json()) as T, list) > 0) section.hidden = false;
+    } catch {
+      // The section stays hidden: the page is complete without it.
+    }
+  }
+
+  void live<PostsPage>('posts', '/site-api/posts?perPage=3', (data, list) => {
+    for (const post of data.posts) {
+      const card = el('a', 'post-card');
+      card.href = `/blog/${encodeURIComponent(post.slug)}`;
+      if (post.coverUrl) {
+        const img = el('img', 'cover');
+        img.src = post.coverUrl;
+        img.alt = '';
+        img.loading = 'lazy';
+        card.append(img);
+      } else {
+        card.append(el('span', 'cover cover-empty'));
+      }
+      const body = el('div', 'post-card-body');
+      body.append(el('h3', '', post.title));
+      if (post.excerpt) body.append(el('p', 'muted small', post.excerpt.slice(0, 110)));
+      body.append(el('p', 'meta', formatDate(post.publishedAt)));
+      card.append(body);
+      list.append(card);
+    }
+    return data.posts.length;
+  });
+
+  void live<JobsPage>('jobs', '/site-api/jobs', (data, list) => {
+    for (const job of data.jobs.slice(0, 3)) {
+      const row = el('a', 'job-row');
+      row.href = `/jobs/${encodeURIComponent(job.slug)}`;
+      const text = el('div');
+      text.append(el('h3', '', job.title), el('p', 'muted', `${job.company} · ${job.location}`));
+      row.append(text);
+      if (job.remote) row.append(el('span', 'chip chip-tag', 'Remote'));
+      const item = el('li');
+      item.append(row);
+      list.append(item);
+    }
+    return Math.min(3, data.jobs.length);
+  });
+</script>

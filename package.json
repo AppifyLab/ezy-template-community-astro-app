@@ -10,7 +10,8 @@
     "dev": "astro dev",
     "build": "prisma generate && astro build",
     "preview": "astro preview",
-    "studio": "prisma studio --browser none --port 5555"
+    "studio": "prisma studio --browser none --port 5555",
+    "platform": "node scripts/platform.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.3.4",

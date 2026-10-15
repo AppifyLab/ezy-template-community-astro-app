@@ -2,8 +2,8 @@ import {Hono} from 'hono';
 import {validator} from 'hono/validator';
 
 import type {Member} from '../../lib/types';
-import {platformProblem, requireMember, withViewer} from '../guards';
-import {communityGet} from '../platform';
+import {platformProblem, requireMember, withViewer} from '../../platform/guards';
+import {communityGet} from '../../platform/api';
 
 /**
  * `GET /site-api/members?search=&cursor=` — the members directory, read

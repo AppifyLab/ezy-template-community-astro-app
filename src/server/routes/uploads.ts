@@ -2,13 +2,13 @@ import {Hono} from 'hono';
 import {validator} from 'hono/validator';
 
 import type {UploadRow} from '../../lib/types';
-import {problem, requireMember, withDb, withViewer} from '../guards';
-import {fetchAsVisitor} from '../viewer';
+import {problem, requireMember, withDb, withViewer} from '../../platform/guards';
+import {fetchAsVisitor} from '../../platform/viewer';
 
 /**
  * A member's files. The BYTES never come here: the browser puts them straight
  * into the community's storage (presign → PUT, `storeFile()` in
- * `src/lib/browser-session.ts`). Then:
+ * `src/platform/browser.ts`). Then:
  *
  *   POST /site-api/uploads {key, publicUrl, originalName}
  *     registers the file with the platform AS THE SAME MEMBER (their cookies
