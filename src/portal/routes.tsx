@@ -1,8 +1,8 @@
 import {useInfiniteQuery, useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
-import {createRootRoute, createRoute, Link, Outlet} from '@tanstack/react-router';
+import {createRootRoute, createRoute, Link, Outlet, useRouterState} from '@tanstack/react-router';
 import {type ChangeEvent, type FormEvent, useState} from 'react';
 
-import {storeFile} from '../platform/browser';
+import {logout, storeFile} from '../platform/browser';
 import {
   type Abilities,
   type Job,
@@ -61,101 +61,277 @@ function useMe() {
   });
 }
 
+/** The brand, for the sidebar. Public and cached on the server. */
+function useSite() {
+  return useQuery({
+    queryKey: ['site'],
+    queryFn: () => read<{site: {name: string} | null}>(api.site.$get()),
+    staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * The sidebar, in groups. `ability` hides an item the visitor may not use;
+ * that only HIDES it, the route's guard is the enforcement. Add a screen:
+ * its route below + one item here.
+ */
+const NAV_GROUPS: {
+  label: string;
+  items: {to: string; label: string; exact?: boolean; ability?: keyof Abilities}[];
+}[] = [
+  {
+    label: 'Workspace',
+    items: [
+      {to: '/', label: 'Overview', exact: true},
+      {to: '/uploads', label: 'My files'},
+      {to: '/members', label: 'Members'},
+    ],
+  },
+  {label: 'Manage', items: [{to: '/jobs', label: 'Jobs', ability: 'manageJobs'}]},
+];
+
+/** The screen's title for the top bar: the deepest sidebar item it is under. */
+function useScreenTitle() {
+  const path = useRouterState({select: s => s.location.pathname.replace(/^\/portal/, '') || '/'});
+  const items = NAV_GROUPS.flatMap(group => group.items);
+  const match = items
+    .filter(item => (item.exact ? path === item.to : path === item.to || path.startsWith(`${item.to}/`)))
+    .sort((a, b) => b.to.length - a.to.length)[0];
+  return match?.label ?? 'Dashboard';
+}
+
+/**
+ * The app shell: a full-height sidebar (brand, grouped nav, way back to the
+ * website) and a top bar (screen title, visitor, sign out), the screen in
+ * between. Every screen renders inside it; nothing here reloads the page.
+ */
 const rootRoute = createRootRoute({
   component: function Shell() {
     const me = useMe();
+    const site = useSite();
+    const title = useScreenTitle();
+    const [open, setOpen] = useState(false);
+    const viewer = me.data?.viewer;
+    const abilities = me.data?.abilities;
     return (
-      <div className="portal">
-        <nav className="portal-nav">
-          <Link to="/" activeOptions={{exact: true}}>
-            Overview
-          </Link>
-          <Link to="/uploads">My files</Link>
-          <Link to="/members">Members</Link>
-          {me.data?.abilities.manageJobs && <Link to="/jobs">Jobs</Link>}
-        </nav>
-        <Outlet />
+      <div className="app-shell" data-nav-open={open ? '' : undefined}>
+        <aside className="app-sidebar">
+          <a className="app-brand" href="/">
+            {site.data?.site?.name ?? 'Community'}
+          </a>
+          <nav aria-label="Dashboard" onClick={() => setOpen(false)}>
+            {NAV_GROUPS.map(group => {
+              const items = group.items.filter(item => !item.ability || abilities?.[item.ability]);
+              if (!items.length) return null;
+              return (
+                <div className="app-nav-group" key={group.label}>
+                  <p className="app-nav-label">{group.label}</p>
+                  {items.map(item => (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className="app-nav-link"
+                      activeOptions={{exact: item.exact ?? false}}>
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              );
+            })}
+          </nav>
+          <div className="app-sidebar-foot">
+            <a className="app-nav-link" href="/">
+              ← Back to the website
+            </a>
+            <a className="app-nav-link" href="/feeds">
+              Community
+            </a>
+          </div>
+        </aside>
+
+        <div className="app-main">
+          <header className="app-topbar">
+            <button
+              type="button"
+              className="app-menu-button"
+              aria-label="Menu"
+              aria-expanded={open}
+              onClick={() => setOpen(value => !value)}>
+              ☰
+            </button>
+            <h1 className="app-title">{title}</h1>
+            {viewer && (
+              <div className="app-viewer">
+                <Avatar name={viewer.name ?? ''} src={viewer.avatar} />
+                <span className="app-viewer-name">{viewer.name}</span>
+                {viewer.preview ? (
+                  <span className="chip" title="Editor preview: a stand-in signed-in member">
+                    Preview
+                  </span>
+                ) : (
+                  <button type="button" className="button link small-button" onClick={() => void logout()}>
+                    Sign out
+                  </button>
+                )}
+              </div>
+            )}
+          </header>
+          <main className="app-content">
+            <Outlet />
+          </main>
+        </div>
       </div>
     );
   },
   notFoundComponent: () => (
-    <section>
-      <h1>Not found</h1>
-      <p className="lede">This portal page does not exist.</p>
-      <Link to="/">Back to the portal</Link>
-    </section>
+    <div className="app-empty">
+      <h2>Not found</h2>
+      <p className="muted">This dashboard page does not exist.</p>
+      <Link className="button" to="/">
+        Back to the overview
+      </Link>
+    </div>
   ),
 });
+
+/** One number on the overview. `value` null = still loading. */
+function Stat({label, value, hint, to}: {label: string; value: string | null; hint?: string; to?: string}) {
+  const body = (
+    <>
+      <p className="stat-label">{label}</p>
+      <p className="stat-value">{value ?? '—'}</p>
+      {hint && <p className="stat-hint">{hint}</p>}
+    </>
+  );
+  return to ? (
+    <Link className="stat stat-link" to={to}>
+      {body}
+    </Link>
+  ) : (
+    <div className="stat">{body}</div>
+  );
+}
+
+/**
+ * A count for a stat tile from the FIRST page of a keyset list: "12", or
+ * "20+" when there are more. Never a COUNT query per request; a total that
+ * must be exact comes from a counter kept in the Site Database on write.
+ */
+const pageCount = (rows: unknown[] | undefined, more: boolean) =>
+  rows ? `${rows.length}${more ? '+' : ''}` : null;
 
 const overviewRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: function Overview() {
     const me = useMe();
+    const viewer = me.data?.viewer;
+    const manageJobs = me.data?.abilities.manageJobs ?? false;
     const health = useQuery({
       queryKey: ['health'],
       queryFn: () =>
         read<{preview: boolean; database: boolean; communityKey: boolean}>(api.health.$get()),
     });
-    const brand = useQuery({
-      queryKey: ['site'],
-      queryFn: () => read<{site: {name: string} | null}>(api.site.$get()),
+    // Under the screens' query keys (['uploads'], ['jobs']): a save there
+    // invalidates these too, so the numbers never go stale.
+    const uploads = useQuery({
+      queryKey: ['uploads', 'first'],
+      queryFn: () =>
+        read<{uploads: Upload[]; nextBefore: number | null}>(api.uploads.$get({query: {before: undefined}})),
     });
-    const viewer = me.data?.viewer;
+    const jobs = useQuery({
+      queryKey: ['jobs', 'manage', 'first'],
+      queryFn: () => read<JobsPage>(api.jobs.manage.$get({query: {before: undefined}})),
+      enabled: manageJobs,
+    });
+    const recent = uploads.data?.uploads.slice(0, 5) ?? [];
+
     return (
-      <section>
-        <p className="eyebrow">Portal</p>
-        {viewer && (
-          <div className="me">
-            <Avatar name={viewer.name ?? ''} src={viewer.avatar} />
-            <div>
-              <h1>Hi, {viewer.name}</h1>
-              {viewer.profileSlug && (
-                <a href={`/profile/${encodeURIComponent(viewer.profileSlug)}`}>
-                  Your community profile →
-                </a>
-              )}
-            </div>
+      <div className="app-page">
+        <div className="app-page-head">
+          <div>
+            <h2>{viewer ? `Welcome back, ${viewer.name}` : 'Welcome back'}</h2>
+            <p className="muted">What is happening on your site.</p>
           </div>
-        )}
-        {me.error && <ErrorNote error={me.error} />}
-        <p className="lede">
-          Your space on this site. It runs on this site's own backend (<code>/site-api</code>),
-          which stores data in the Site Database and reads the community with the Community Key.
-        </p>
-        <div className="grid grid-3">
-          <Link className="card link-card" to="/uploads">
-            <h3>My files</h3>
-            <p className="muted">Upload files to the community's storage.</p>
+          <Link className="button" to="/uploads">
+            Upload a file
           </Link>
-          <Link className="card link-card" to="/members">
-            <h3>Members</h3>
-            <p className="muted">Who is in {brand.data?.site?.name ?? 'the community'}.</p>
-          </Link>
-          <a className="card link-card" href="/feeds">
-            <h3>Community</h3>
-            <p className="muted">Posts, events and conversations.</p>
-          </a>
         </div>
+
+        {me.error && <ErrorNote error={me.error} />}
         {viewer?.preview && (
           <p className="notice">
             Editor preview: you are a stand-in member with every permission, and changes go to the
             Preview Database. Real sign-in and uploads work on your live site.
           </p>
         )}
-        {health.error && <ErrorNote error={health.error} />}
-        {health.data && (
-          <ul className="status">
-            <li>
-              Site Database:{' '}
-              <strong>{health.data.database ? 'connected' : 'not enabled yet'}</strong>
-            </li>
-            <li>
-              Community Key: <strong>{health.data.communityKey ? 'available' : 'missing'}</strong>
-            </li>
-          </ul>
-        )}
-      </section>
+
+        <div className="stat-grid">
+          <Stat
+            label="My files"
+            value={pageCount(uploads.data?.uploads, Boolean(uploads.data?.nextBefore))}
+            to="/uploads"
+          />
+          {manageJobs && (
+            <Stat
+              label="Jobs"
+              value={pageCount(jobs.data?.jobs, Boolean(jobs.data?.nextBefore))}
+              to="/jobs"
+            />
+          )}
+          <Stat
+            label="Site Database"
+            value={health.data ? (health.data.database ? 'Connected' : 'Off') : null}
+            hint={health.data && !health.data.database ? 'Ask the owner to enable it.' : undefined}
+          />
+          <Stat
+            label="Community Key"
+            value={health.data ? (health.data.communityKey ? 'Available' : 'Missing') : null}
+          />
+        </div>
+
+        <section className="app-card">
+          <div className="app-card-head">
+            <h3>Recent files</h3>
+            <Link to="/uploads">View all</Link>
+          </div>
+          {uploads.error ? (
+            <ErrorNote error={uploads.error} />
+          ) : uploads.isPending ? (
+            <p className="muted">Loading…</p>
+          ) : recent.length ? (
+            <table className="app-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Size</th>
+                  <th>Added</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recent.map(file => (
+                  <tr key={file.id}>
+                    <td>
+                      <a href={file.url} target="_blank" rel="noreferrer">
+                        {file.originalName}
+                      </a>
+                    </td>
+                    <td className="muted">{bytes(file.fileSize)}</td>
+                    <td className="muted">{when(file.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="app-empty">
+              <p className="muted">No files yet.</p>
+              <Link className="button ghost" to="/uploads">
+                Upload your first file
+              </Link>
+            </div>
+          )}
+        </section>
+      </div>
     );
   },
 });
@@ -191,8 +367,8 @@ const uploadsRoute = createRoute({
     const preview = useMe().data?.viewer.preview ?? false;
 
     return (
-      <section>
-        <h1>My files</h1>
+      <div className="app-page">
+        <h2>My files</h2>
         <p className="muted">
           Files go straight from your browser to the community's storage; this site keeps the link.
           Images up to 10 MB, documents up to 500 MB.
@@ -240,7 +416,7 @@ const uploadsRoute = createRoute({
             Load more
           </button>
         )}
-      </section>
+      </div>
     );
   },
 });
@@ -267,8 +443,8 @@ const membersRoute = createRoute({
     const rows = members.data?.pages.flatMap(page => page.members) ?? [];
 
     return (
-      <section>
-        <h1>Members</h1>
+      <div className="app-page">
+        <h2>Members</h2>
         <p className="muted">Read by this site's server with the Community Key.</p>
         <form className="search" onSubmit={submit}>
           <input
@@ -302,7 +478,7 @@ const membersRoute = createRoute({
             Load more
           </button>
         )}
-      </section>
+      </div>
     );
   },
 });
@@ -373,9 +549,9 @@ const jobsRoute = createRoute({
     const rows = jobs.data?.pages.flatMap(page => page.jobs) ?? [];
 
     return (
-      <section>
-        <div className="section-head">
-          <h1>Jobs</h1>
+      <div className="app-page">
+        <div className="app-page-head">
+          <h2>Jobs</h2>
           {editing === null && (
             <button className="button" onClick={() => (setForm(EMPTY_JOB), setEditing('new'))}>
               Post a job
@@ -455,7 +631,7 @@ const jobsRoute = createRoute({
             Load more
           </button>
         )}
-      </section>
+      </div>
     );
   },
 });

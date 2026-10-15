@@ -140,7 +140,9 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
           first = !sessionStorage.getItem(key);
           sessionStorage.setItem(key, '1');
         } catch {
-          // Storage blocked: refresh anyway; `refreshSession` never loops.
+          // Storage blocked: no way to remember the reload, so never reload
+          // (it would repeat on every load). The visitor signs in again.
+          first = false;
         }
         if (first) void refreshSession().then(ok => ok && window.location.reload());
       } else {

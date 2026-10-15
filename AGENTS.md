@@ -205,6 +205,44 @@ Hard rules:
 - Never mix: an SSR or static page does not host app screens, and an app
   does not render public SEO content.
 
+## A dashboard looks like a dashboard (app anatomy)
+
+A dashboard, admin area, CRM, portal or any internal tool is a REAL app UI,
+never a landing page with cards. The portal (`src/pages/portal/[...path].astro`
++ `src/portal/`) is the reference: copy its shell, don't invent one.
+
+Required, every time:
+
+- **The app layout**: `src/layouts/App.astro`, NEVER `Base.astro`. Full
+  viewport height, no website header, no website footer, no centered
+  marketing column, `noindex`.
+- **Left sidebar**: the brand (links to the website `/`), nav items in labelled
+  groups (e.g. Workspace / Manage / Settings) with a clear active state,
+  admin-only items hidden by `abilities`, and at the bottom "Back to the
+  website". On narrow screens it collapses behind a menu button (drawer).
+- **Top bar**: the current screen's title (the page's only `<h1>`), the
+  signed-in member (avatar, name) and Sign out (Preview chip in the editor).
+- **Overview screen first** (`/`): a row of stat tiles (`.stat-grid` /
+  `<Stat>`), then the most useful recent activity as a table or list, each
+  with a "View all" link to its screen. Stats link to the screen they count.
+- **Every screen**: a page head (`.app-page-head`: `<h2>` title + short
+  description + the ONE primary action on the right), content in cards
+  (`.app-card`), lists as tables (`.app-table`) or rows, and all three states
+  handled: loading, empty (`.app-empty` with a call to action), error.
+- **Forms** sit in a card or a drawer on the screen; saving shows the result
+  in place (a toast or the updated row), never a page load.
+- **Numbers come cheap**: a tile reads the first page of a keyset list
+  ("20+", see `pageCount`) or a counter kept in the Site Database on write.
+  NEVER a `count()` / aggregate over a growing table per request.
+
+Never in an app: a hero section, marketing copy or taglines, big
+illustrations, "Learn more" sections, the website's nav, a footer, a
+full-page centered narrow column, or one `.astro` page per screen.
+
+Styling: extend the `app-*`, `stat-*` classes and the colour tokens in
+`src/styles/global.css` (light and dark flip together). A UI library is
+fine if the owner asks for one; the anatomy above still applies.
+
 ## Recipes
 
 ### A Site API route (do this first for any new data)
@@ -276,14 +314,15 @@ The only `.astro` page that checks the visitor itself is an app's host page.
 Default is a section of the portal (`/portal/crm/...`). Only when the owner
 asks for its own path:
 1. ONE host page `src/pages/<app>/[...path].astro`, a copy of
-   `src/pages/portal/[...path].astro` (`prerender = false`, the same
-   member / applicant / sign-in branches) rendering e.g.
+   `src/pages/portal/[...path].astro` (`App.astro` layout, `prerender =
+   false`, the same member / applicant / sign-in branches) rendering e.g.
    `<CrmApp client:only="react" />`. No other `.astro` file under
    `src/pages/<app>/`.
 2. `src/<app>/` (e.g. `src/crm/CrmApp.tsx`): a copy of `src/portal/PortalApp.tsx` with its
    own `createRouter({routeTree, basepath: '/<app>'})`, and the screens in
-   `src/<app>/routes.tsx`. Data through the typed `api` client
-   (`src/portal/api.ts`), TanStack Query.
+   `src/<app>/routes.tsx`, whose root route is the portal's `Shell`
+   (sidebar + top bar, its own `NAV_GROUPS`). Data through the typed `api`
+   client (`src/portal/api.ts`), TanStack Query.
 3. The path must not be one the community app owns (see the list above).
 
 ### A custom app (a CRM, a booking tool, an internal tracker)

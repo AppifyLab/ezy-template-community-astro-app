@@ -4,13 +4,23 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
-## 0.3.2
+## 0.4.0
 
 - `AGENTS.md`: "Which kind of page" — signed-in, interactive screens
   (dashboards, CRMs, admin tools) are ALWAYS a single-page app (the portal,
   or one catch-all host page per app), never one `.astro` page per screen;
   SSR is for crawlable public lists and details, static for marketing pages.
   Recipe for a separate app at its own path (`/crm`).
+- `AGENTS.md`: "A dashboard looks like a dashboard" — required app anatomy
+  (app layout, sidebar, top bar, stat tiles, tables, loading/empty/error) and
+  what never goes in an app (hero, marketing copy, site header/footer).
+- The portal is now a real app shell: new `src/layouts/App.astro` (full
+  height, no website header/footer, `noindex`), a grouped left sidebar that
+  collapses to a drawer on mobile, a top bar with the member and Sign out,
+  and an overview with stat tiles and recent files. Styles: `app-*`, `stat-*`
+  in `global.css` (the old `.portal-nav` is gone).
+- Fix: with `sessionStorage` blocked, an expired session reloaded the page
+  on every load. It now never reloads when it cannot remember it did.
 
 ## 0.3.1
 

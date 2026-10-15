@@ -4,8 +4,12 @@
  * picks the screen in the browser. Members only: the server checks the
  * visitor's own session first, and everyone else gets a sign-in prompt (the
  * Site API checks again on every call — this page is not the guard).
+ *
+ * The APP layout, not the website's: the portal draws its own full-height
+ * shell (sidebar, top bar). The ONLY `.astro` file of the app: never add one
+ * per screen.
  */
-import Base from '../../layouts/Base.astro';
+import App from '../../layouts/App.astro';
 import PortalApp from '../../portal/PortalApp';
 import {pageContext} from '../../server/page';
 
@@ -15,32 +19,35 @@ const {site, viewer} = await pageContext(Astro.request, Astro.response);
 const back = encodeURIComponent(`${Astro.url.pathname}${Astro.url.search}`);
 ---
 
-<Base site={site} viewer={viewer} title="Portal">
-  <main class="wrap section">
-    {
-      viewer.state === 'member' ? (
-        <>
-          <PortalApp client:only="react" />
-          <noscript>
-            <p class="lede">The portal needs JavaScript.</p>
-          </noscript>
-        </>
-      ) : viewer.state === 'applicant' ? (
+<App site={site} viewer={viewer} title="Dashboard">
+  {
+    viewer.state === 'member' ? (
+      <>
+        <PortalApp client:only="react" />
+        <noscript>
+          <p class="app-gate">The dashboard needs JavaScript.</p>
+        </noscript>
+      </>
+    ) : viewer.state === 'applicant' ? (
+      <main class="app-gate">
         <div class="card center">
           <h1>Almost there</h1>
-          <p class="lede">The portal opens once your membership is active.</p>
+          <p class="lede">The dashboard opens once your membership is active.</p>
           <a class="button" href="/join">Finish joining</a>
         </div>
-      ) : (
+      </main>
+    ) : (
+      <main class="app-gate">
         <div class="card center">
           <h1>Members only</h1>
-          <p class="lede">Sign in to {site?.name ?? 'the community'} to open your portal.</p>
+          <p class="lede">Sign in to {site?.name ?? 'the community'} to open your dashboard.</p>
           <div class="actions">
             <a class="button" href={`/login?redirectTo=${back}`}>Log in</a>
             <a class="button ghost" href={`/register?redirectTo=${back}`}>Join</a>
+            <a class="button link" href="/">Back to the website</a>
           </div>
         </div>
-      )
-    }
-  </main>
-</Base>
+      </main>
+    )
+  }
+</App>
