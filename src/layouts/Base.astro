@@ -1,27 +1,43 @@
 ---
 /**
  * Header, footer and <head> for every page. The page fetches the brand (`site`)
- * and passes it in, so the layout never makes an API call of its own.
+ * and the visitor (`viewer`) with `pageContext` and passes them in, so the
+ * layout never makes an API call of its own.
+ *
+ * Sign in, sign up, joining and the community itself are App pages on this
+ * same hostname: always plain `<a href>`, never a client-side route.
  */
 import '../styles/global.css';
 
 import BrandMark from '../components/BrandMark.astro';
-import type {Site} from '../lib/api';
+import {NAV} from '../content/site';
+import type {Site, Viewer} from '../lib/types';
+import {initials} from '../lib/format';
 
 interface Props {
   site: Site | null;
+  viewer: Viewer;
   /** The page's own name; the tab shows "<title> · <community>". Omit on home. */
   title?: string;
   description?: string;
   /** Extra <head> tags, e.g. og:image on a post. */
   image?: string | null;
+  /**
+   * A PRERENDERED page (`export const prerender = true`): built once, served
+   * as a static file, so it knows no visitor. The header then renders the
+   * signed-out view and the browser fills in the visitor (`/site-api/me`) and
+   * a renamed community (`/site-api/site`) after load.
+   */
+  isStatic?: boolean;
 }
 
-const {site, title, description, image} = Astro.props;
+const {site, viewer, title, description, image, isStatic = false} = Astro.props;
 const name = site?.name ?? 'Community';
 const fullTitle = title ? `${title} · ${name}` : name;
 const path = Astro.url.pathname;
 const active = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+// Back to this page after signing in. A PATH only: the App ignores full URLs.
+const back = encodeURIComponent(`${path}${Astro.url.search}`);
 ---
 
 <!doctype html>
@@ -31,24 +47,69 @@ const active = (href: string) => (href === '/' ? path === '/' : path.startsWith(
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
     {description && <meta name="description" content={description} />}
-    {title && <meta property="og:title" content={title} />}
+    <meta property="og:title" content={title ?? name} />
     {image && <meta property="og:image" content={image} />}
     {site?.favIcon && <link rel="icon" href={site.favIcon} />}
   </head>
-  <body>
+  <body data-viewer={viewer.state} data-static={isStatic ? '1' : undefined}>
     <header class="site-header">
       <div class="wrap site-header-inner">
         <a href="/" class="brand">
           <BrandMark site={site} />
-          <span class="brand-name">{name}</span>
+          <span class="brand-name" data-brand-text="{name}" data-built-name={name}>{name}</span>
         </a>
-        <nav class="site-nav">
-          <a href="/" class:list={{active: active('/')}}>Home</a>
-          <a href="/blog" class:list={{active: active('/blog')}}>Blog</a>
-          <a href="/portal" class:list={{active: active('/portal')}}>Portal</a>
-          {/* /feeds is your community app, on this same address: a plain link. */}
-          <a href="/feeds">Community</a>
+        <nav class="site-nav" aria-label="Main">
+          {NAV.map(item => (
+            <a href={item.href} class:list={{active: active(item.href)}}>
+              {item.label}
+            </a>
+          ))}
+          <a
+            href="/portal"
+            class:list={{active: active('/portal')}}
+            data-member-only
+            hidden={viewer.state !== 'member'}>
+            Dashboard
+          </a>
         </nav>
+        <div class="session" data-session>
+          {viewer.state === 'member' ? (
+            <>
+              <a class="button ghost small-button" href="/feeds">
+                Community
+              </a>
+              <span class="viewer" title={viewer.name ?? ''}>
+                {viewer.avatar ? (
+                  <img src={viewer.avatar} alt="" width="28" height="28" />
+                ) : (
+                  <span class="avatar-fallback" aria-hidden="true">
+                    {initials(viewer.name ?? '')}
+                  </span>
+                )}
+              </span>
+              {viewer.preview ? (
+                <span class="chip" title="Editor preview: a stand-in signed-in member">Preview</span>
+              ) : (
+                <button class="button link small-button" type="button" data-logout>
+                  Sign out
+                </button>
+              )}
+            </>
+          ) : viewer.state === 'applicant' ? (
+            <a class="button small-button" href="/join">
+              Finish joining
+            </a>
+          ) : (
+            <>
+              <a class="button link small-button" href={`/login?redirectTo=${back}`}>
+                Log in
+              </a>
+              <a class="button small-button" href={`/register?redirectTo=${back}`}>
+                Join
+              </a>
+            </>
+          )}
+        </div>
       </div>
     </header>
 
@@ -56,9 +117,45 @@ const active = (href: string) => (href === '/' ? path === '/' : path.startsWith(
 
     <footer class="site-footer">
       <div class="wrap site-footer-inner">
-        <span>© {new Date().getUTCFullYear()} {name}</span>
-        <span class="muted">Powered by EzyCommunity</span>
+        <span data-brand-text="© {year} {name}">© {new Date().getUTCFullYear()} {name}</span>
+        <nav class="footer-nav" aria-label="Footer">
+          {NAV.map(item => <a href={item.href}>{item.label}</a>)}
+          <a href="/feeds">Community</a>
+        </nav>
       </div>
     </footer>
+
+    <script>
+      import {logout, refreshSession} from '../platform/browser';
+      import {hydrateStaticPage} from '../platform/static-page';
+
+      if (document.body.dataset.static === '1') void hydrateStaticPage();
+
+      // The server saw an expired access token but a refresh cookie: refresh
+      // ONCE in the browser (the server never does), then re-render signed in.
+      if (document.body.dataset.viewer === 'returning') {
+        const key = 'site:refreshed';
+        let first = true;
+        try {
+          first = !sessionStorage.getItem(key);
+          sessionStorage.setItem(key, '1');
+        } catch {
+          // Storage blocked: no way to remember the reload, so never reload
+          // (it would repeat on every load). The visitor signs in again.
+          first = false;
+        }
+        if (first) void refreshSession().then(ok => ok && window.location.reload());
+      } else {
+        try {
+          sessionStorage.removeItem('site:refreshed');
+        } catch {
+          // Storage blocked: nothing to clear.
+        }
+      }
+
+      document.querySelectorAll('[data-logout]').forEach(button =>
+        button.addEventListener('click', () => void logout())
+      );
+    </script>
   </body>
 </html>

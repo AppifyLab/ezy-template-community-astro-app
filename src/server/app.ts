@@ -1,120 +1,69 @@
-import {env} from 'cloudflare:workers';
 import {Hono} from 'hono';
-import {csrf} from 'hono/csrf';
-import {createMiddleware} from 'hono/factory';
-import {validator} from 'hono/validator';
 
-import type {PrismaClient} from '../generated/prisma/client';
-import {CommunityApiError, communityGet, CommunityKeyMissing} from './community';
-import {getDb} from './db';
+import type {Abilities} from '../lib/types';
+import {config} from '../platform/config';
+import {problem, sameOrigin} from '../platform/guards';
+import {isPreview} from '../platform/api';
+import {jobRoutes, MANAGE_JOBS} from './routes/jobs';
+import {memberRoutes} from './routes/members';
+import {postRoutes} from './routes/posts';
+import {siteRoutes} from './routes/site';
+import {uploadRoutes} from './routes/uploads';
+import {getViewer, getViewerPermissions, grants} from '../platform/viewer';
 
 /**
- * The Site API: this site's own backend, a Hono app at `/site-api/*`.
+ * The Site API: this site's ONLY backend, one Hono app at `/site-api/*`.
  *
- * Mounted by ONE catch-all page, `src/pages/site-api/[...path].ts`. `/site-api`
- * is reserved for your site forever: the community app never claims it.
- * Routes are CHAINED so `AppType` carries every route to the typed `hc` client
- * (`src/portal/api.ts`). Errors are JSON. `csrf()` refuses cross-site form
- * posts; keep it unless a route must accept them (a webhook).
+ * Everything reads and writes through it: the Astro pages call it IN-PROCESS
+ * (`src/server/backend.ts`), the portal calls it from the browser (typed `hc`,
+ * `src/portal/api.ts`). Mounted by ONE catch-all page,
+ * `src/pages/site-api/[...path].ts`. One Worker serves the pages, this API and
+ * the portal: one build, one deploy.
+ *
+ *   GET  /health        what this site has been given (booleans only)
+ *   GET  /me            the visitor + what they may do here
+ *   GET  /site          the community's brand                 routes/site.ts
+ *   *    /posts/...     the community's blog (public API)      routes/posts.ts
+ *   *    /jobs/...      the job board (Site Database)          routes/jobs.ts
+ *   GET  /members      members directory (Community Key)      routes/members.ts
+ *   *    /uploads       a member's files (Site Database)       routes/uploads.ts
+ *
+ * Add a feature as a new `routes/<name>.ts` and one `.route()` line below,
+ * CHAINED so `AppType` carries every route to the typed client. Errors are
+ * JSON `{error, message}`. `sameOrigin` refuses every cross-site write; keep
+ * it (a webhook that must accept one gets its own app, mounted before it).
  */
-
-type Problem = {error: string; message: string};
-
-const problem = (error: string, message: string): Problem => ({error, message});
-
-const NO_DATABASE = problem(
-  'site_database_disabled',
-  'This site has no Site Database yet. The community owner can turn it on with “Enable Site Database” on the Custom code page.'
-);
-
-/** Hands the route a Site Database client, or answers 503 when there is none. */
-const withDb = createMiddleware<{Variables: {db: PrismaClient}}>(async (c, next) => {
-  const db = getDb();
-  if (!db) return c.json(NO_DATABASE, 503);
-  c.set('db', db);
-  await next();
-});
-
-const PAGE_SIZE = 20;
-
-const noteSelect = {id: true, body: true, author: true, createdAt: true} as const;
-
 export const app = new Hono()
   .basePath('/site-api')
-  .use(csrf())
+  .use(sameOrigin)
 
-  // What this site has been given. Booleans only: never echo a secret.
   .get('/health', c =>
     c.json({
       ok: true,
-      database: Boolean(env.DATABASE_URL),
-      communityKey: Boolean(env.EZY_COMMUNITY_KEY),
+      preview: isPreview(),
+      database: Boolean(config.databaseUrl),
+      communityKey: Boolean(config.communityKey),
     })
   )
 
-  // Site Database: newest first, 20 a page; `?before=<id>` for the next page.
-  .get('/notes', withDb, async c => {
-    const before = Number(c.req.query('before'));
-    const rows = await c.var.db.note.findMany({
-      select: noteSelect,
-      where: Number.isInteger(before) && before > 0 ? {id: {lt: before}} : undefined,
-      orderBy: {id: 'desc'},
-      take: PAGE_SIZE + 1,
-    });
-    const notes = rows.slice(0, PAGE_SIZE);
-    return c.json({notes, nextBefore: rows.length > PAGE_SIZE ? notes.at(-1)!.id : null});
+  // `abilities` only decides what the UI SHOWS; every guarded route checks again.
+  // The two lookups run in PARALLEL (and once per request): one round trip.
+  .get('/me', async c => {
+    const [viewer, perms] = await Promise.all([
+      getViewer(c.req.raw),
+      getViewerPermissions(c.req.raw),
+    ]);
+    c.header('Cache-Control', 'private, no-store');
+    const permissions = viewer.state === 'member' ? perms : new Set<string>();
+    const abilities: Abilities = {manageJobs: grants(permissions, MANAGE_JOBS)};
+    return c.json({viewer, abilities});
   })
 
-  .post(
-    '/notes',
-    validator('json', (value, c) => {
-      const body = typeof value?.body === 'string' ? value.body.trim() : '';
-      const author = typeof value?.author === 'string' ? value.author.trim() : '';
-      if (!body || body.length > 500) {
-        return c.json(problem('invalid_note', 'A note needs 1 to 500 characters.'), 422);
-      }
-      if (author.length > 80) {
-        return c.json(problem('invalid_note', 'A name is at most 80 characters.'), 422);
-      }
-      return {body, author: author || null};
-    }),
-    withDb,
-    async c => {
-      const note = await c.var.db.note.create({data: c.req.valid('json'), select: noteSelect});
-      return c.json({note}, 201);
-    }
-  )
-
-  .get('/notes/:id', withDb, async c => {
-    const id = Number(c.req.param('id'));
-    const note = Number.isSafeInteger(id)
-      ? await c.var.db.note.findUnique({where: {id}, select: noteSelect})
-      : null;
-    return note ? c.json({note}, 200) : c.json(problem('not_found', 'No such note.'), 404);
-  })
-
-  // The platform's API as the Community (Community Key): the community's name
-  // and logo. Re-projected field by field, so nothing the API adds later leaks.
-  .get('/community', async c => {
-    try {
-      const raw = await communityGet<Record<string, unknown>>(c.req.url, '/site/initial-data');
-      const community = raw
-        ? {name: String(raw.name ?? ''), logo: (raw.logo as string | null) ?? null}
-        : null;
-      return c.json({community}, 200);
-    } catch (err) {
-      if (err instanceof CommunityKeyMissing) {
-        return c.json(
-          problem('community_key_missing', 'This site has no Community Key here.'),
-          503
-        );
-      }
-      if (err instanceof CommunityApiError) {
-        return c.json(problem('community_api_error', err.message), 502);
-      }
-      throw err;
-    }
-  })
+  .route('/site', siteRoutes)
+  .route('/posts', postRoutes)
+  .route('/jobs', jobRoutes)
+  .route('/members', memberRoutes)
+  .route('/uploads', uploadRoutes)
 
   .notFound(c => c.json(problem('not_found', 'No such Site API route.'), 404))
   .onError((err, c) => {

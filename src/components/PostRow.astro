@@ -1,0 +1,24 @@
+---
+/** One story in the publication list: title, subtitle, byline, cover thumbnail. */
+import type {PostSummary} from '../lib/types';
+import {formatDate, preview} from '../lib/format';
+
+interface Props {
+  post: PostSummary;
+}
+
+const {post} = Astro.props;
+const author = post.authors[0];
+---
+
+<a class="post-row" href={`/blog/${encodeURIComponent(post.slug)}`}>
+  <div class="post-row-text">
+    <h3>{post.title}</h3>
+    {post.excerpt && <p class="pub-subtitle">{preview(post.excerpt, undefined, 140)}</p>}
+    <p class="byline">
+      {author && <span>{author.name}</span>}
+      {post.publishedAt && <span>{formatDate(post.publishedAt)}</span>}
+    </p>
+  </div>
+  {post.coverUrl && <img class="post-row-cover" src={post.coverUrl} alt="" loading="lazy" />}
+</a>

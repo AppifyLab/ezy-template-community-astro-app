@@ -1,45 +1,85 @@
 ---
-import PostCard from '../../components/PostCard.astro';
+/**
+ * The blog, as a publication: masthead, search, and the story list. Rendered
+ * on the server from `GET /site-api/posts` (in-process). Search and paging are
+ * plain query strings (`/blog?search=…&page=2`), so every result is a real,
+ * shareable, crawlable URL.
+ */
+import BrandMark from '../../components/BrandMark.astro';
+import PostRow from '../../components/PostRow.astro';
 import Base from '../../layouts/Base.astro';
-import {getSite, listPosts} from '../../lib/api';
+import type {PostsPage} from '../../lib/types';
+import {read} from '../../server/backend';
+import {pageContext} from '../../server/page';
 
-const PER_PAGE = 9;
+const PER_PAGE = 10;
 const page = Math.max(1, Number(Astro.url.searchParams.get('page')) || 1);
+const search = (Astro.url.searchParams.get('search') ?? '').trim().slice(0, 100);
 
-const [site, {posts, meta}] = await Promise.all([
-  getSite(Astro.url),
-  listPosts(Astro.url, {page, perPage: PER_PAGE}),
-]);
-const pageHref = (n: number) => (n === 1 ? '/blog' : `/blog?page=${n}`);
+const {api, site, viewer} = await pageContext(Astro.request, Astro.response);
+const result = await read<PostsPage>(
+  api.posts.$get({query: {page: String(page), perPage: String(PER_PAGE), search}})
+);
+const posts = result?.posts ?? [];
+const name = site?.name ?? 'Community';
+const href = (n: number) => {
+  const params = new URLSearchParams();
+  if (search) params.set('search', search);
+  if (n > 1) params.set('page', String(n));
+  const qs = params.toString();
+  return qs ? `/blog?${qs}` : '/blog';
+};
+const [featured, ...rest] = page === 1 && !search ? posts : [null, ...posts];
 ---
 
-<Base site={site} title="Blog">
-  <main class="wrap section">
-    <p class="eyebrow">{site?.name ?? 'Community'}</p>
-    <h1>Blog</h1>
+<Base site={site} viewer={viewer} title="Blog" description={`Stories and updates from ${name}.`}>
+  <main class="pub">
+    <header class="pub-masthead">
+      <BrandMark site={site} size={64} />
+      <h1>{name}</h1>
+      <p class="pub-tagline">Stories, guides and updates from the community.</p>
+      {
+        viewer.state !== 'member' && (
+          <a class="button" href="/register?redirectTo=%2Fblog">
+            Join {name}
+          </a>
+        )
+      }
+    </header>
+
+    <form class="pub-search" action="/blog" method="get" role="search">
+      <input type="search" name="search" value={search} placeholder="Search posts" maxlength="100" />
+      <button class="button ghost" type="submit">Search</button>
+    </form>
+
+    {search && (
+      <p class="muted small pub-results">
+        {posts.length === 0 ? 'No posts match' : 'Results for'} “{search}” · <a href="/blog">Clear</a>
+      </p>
+    )}
 
     {
-      posts.length === 0 ? (
-        <p class="lede">No posts published yet.</p>
-      ) : (
-        <div class="grid grid-3">
-          {posts.map(post => (
-            <PostCard post={post} />
-          ))}
-        </div>
+      featured && (
+        <a class="pub-featured" href={`/blog/${encodeURIComponent(featured.slug)}`}>
+          {featured.coverUrl && <img src={featured.coverUrl} alt="" loading="eager" />}
+          <h2>{featured.title}</h2>
+          {featured.excerpt && <p class="pub-subtitle">{featured.excerpt}</p>}
+        </a>
       )
     }
 
+    <div class="pub-list">
+      {rest.filter(Boolean).map(post => <PostRow post={post!} />)}
+    </div>
+
+    {posts.length === 0 && !search && <p class="lede center">No posts published yet.</p>}
+
     {
-      meta.lastPage > 1 && (
+      (page > 1 || result?.hasMore) && (
         <nav class="pager">
-          {meta.currentPage > 1 && <a href={pageHref(meta.currentPage - 1)}>← Newer</a>}
-          <span class="muted small">
-            Page {meta.currentPage} of {meta.lastPage}
-          </span>
-          {meta.currentPage < meta.lastPage && (
-            <a href={pageHref(meta.currentPage + 1)}>Older →</a>
-          )}
+          {page > 1 && <a href={href(page - 1)}>← Newer</a>}
+          <span class="muted small">Page {page}</span>
+          {result?.hasMore && <a href={href(page + 1)}>Older →</a>}
         </nav>
       )
     }

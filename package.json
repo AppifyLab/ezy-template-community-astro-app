@@ -1,5 +1,5 @@
 {
-  "name": "ezy-template-community-astro-app",
+  "name": "community-site",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -7,10 +7,11 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "astro dev",
+    "dev": "prisma generate && astro dev",
     "build": "prisma generate && astro build",
     "preview": "astro preview",
-    "studio": "prisma studio --browser none --port 5555"
+    "studio": "prisma studio --browser none --port 5555",
+    "platform": "node scripts/platform.mjs"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.3.4",
@@ -22,7 +23,8 @@
     "astro": "^7.3.8",
     "hono": "^4.13.13",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "xss": "^1.0.15"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

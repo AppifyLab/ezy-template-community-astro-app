@@ -5,11 +5,11 @@
  */
 import NotFound from '../components/NotFound.astro';
 import Base from '../layouts/Base.astro';
-import {getSite} from '../lib/api';
+import {pageContext} from '../server/page';
 
-const site = await getSite(Astro.url);
+const {site, viewer} = await pageContext(Astro.request, Astro.response);
 ---
 
-<Base site={site} title="Page not found">
+<Base site={site} viewer={viewer} title="Page not found">
   <NotFound site={site} />
 </Base>

@@ -8,3 +8,6 @@ dist
 .DS_Store
 # Made by `prisma generate` (the build script runs it).
 src/generated
+
+# Live platform docs fetched by `npm run platform -- docs`.
+.platform/
