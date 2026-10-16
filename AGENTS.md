@@ -246,15 +246,19 @@ Hard rules:
 
 ## Machine limits: never overload the editor (NON-NEGOTIABLE)
 
-You run in the editor's sandbox: **2 vCPU and 4 GB RAM in total**, shared with
-the Preview dev server (`npm run dev`) the owner is looking at. If you exhaust
-it, the Preview freezes, the sandbox gets killed, and the owner loses the
-session. Keep it in check:
+You run in the editor's sandbox, shared with the Preview dev server
+(`npm run dev`) the owner is looking at. Its CPU and memory are set by the
+platform and CHANGE (they can be raised or lowered at any time): never assume
+a size, read it. If you exhaust it, the Preview freezes, the sandbox gets
+killed, and the owner loses the session. Keep it in check:
 
-- **Check before heavy work, and when anything feels slow**: `free -m`
-  (memory), `uptime` (load; above ~2 means the CPUs are full),
-  `ps aux --sort=-%mem | head -8` (what is eating memory). If free memory is
-  under ~500 MB or load stays above 2, stop and clean up before going on.
+- **Read the real limits at the start of a session and before heavy work**:
+  `nproc` (CPUs), `free -m` (memory: total and available), and
+  `cat /sys/fs/cgroup/memory.max 2>/dev/null` (the hard memory cap, when set).
+- **Check again whenever anything feels slow**: `uptime` (load average) and
+  `ps aux --sort=-%mem | head -8` (what is eating memory). Stop and clean up
+  before going on when available memory is under ~15% of the total, or the
+  load stays above the CPU count from `nproc`.
 - **ONE dev server, ever.** The editor already runs it: never start another
   `npm run dev` / `astro dev` / `vite`, and never `npm run preview`. Before
   starting anything long-lived, check it is not already running

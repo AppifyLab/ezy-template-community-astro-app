@@ -4,17 +4,19 @@ Template releases. `npm run platform -- check` says when a newer one is out;
 `npm run platform -- upgrade` applies it (see `scripts/platform.mjs`).
 Managed by the template: replaced on upgrade.
 
-## 0.4.3
+## 0.4.4
 
 - `AGENTS.md`: "Buttons and forms (NON-NEGOTIABLE)". Every button has
   pending (spinner + "Saving…" + `aria-busy` + disabled), disabled, per-row
   and error states. Every form is `noValidate` with labelled fields and
   in-place validation errors (on blur / submit, focus the first wrong field),
   never browser bubbles, using the same limits as the server.
-- `AGENTS.md`: "Machine limits: never overload the editor". The sandbox is
-  2 vCPU / 4 GB shared with the Preview: check `free -m` / `uptime` / `ps`,
-  one dev server ever, kill what you start, no watchers, one heavy command at
-  a time, bounded commands; plus the Worker's 128 MB / short-CPU limits.
+- `AGENTS.md`: "Machine limits: never overload the editor". CPU and memory
+  are dynamic, so the agent reads them (`nproc`, `free -m`, the cgroup
+  `memory.max`) instead of assuming a size, and stops when available memory
+  drops under ~15% or load stays above the CPU count. One dev server ever,
+  kill what you start, no watchers, one heavy command at a time, bounded
+  commands; plus the Worker's 128 MB / short-CPU limits.
 - New `src/portal/ui.tsx`: `Button` (pending / disabled / variants),
   `Field` (label, hint, error, aria wiring), `useForm` + pure `rules`.
 - The jobs screen uses them: labelled fields, rules mirroring
