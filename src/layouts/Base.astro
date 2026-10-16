@@ -153,9 +153,35 @@ const back = encodeURIComponent(`${path}${Astro.url.search}`);
         }
       }
 
-      document.querySelectorAll('[data-logout]').forEach(button =>
-        button.addEventListener('click', () => void logout())
+      // Every button shows when it is busy (AGENTS.md "Buttons and forms").
+      const busy = (button: HTMLButtonElement, label?: string) => {
+        button.disabled = true;
+        button.setAttribute('aria-busy', 'true');
+        if (label) button.textContent = label;
+      };
+
+      document.querySelectorAll<HTMLButtonElement>('[data-logout]').forEach(button =>
+        button.addEventListener('click', () => {
+          busy(button, 'Signing out…');
+          void logout();
+        })
       );
+
+      // A search / filter form (GET) navigates: show its button busy until the next page.
+      document.addEventListener('submit', event => {
+        const form = event.target;
+        if (event.defaultPrevented || !(form instanceof HTMLFormElement)) return;
+        if (form.method.toLowerCase() !== 'get') return;
+        if (event.submitter instanceof HTMLButtonElement) busy(event.submitter);
+      });
+      // Back/forward restores a page from memory: give its buttons back.
+      window.addEventListener('pageshow', event => {
+        if (!event.persisted) return;
+        document.querySelectorAll<HTMLButtonElement>('button[aria-busy="true"]').forEach(button => {
+          button.disabled = false;
+          button.removeAttribute('aria-busy');
+        });
+      });
     </script>
   </body>
 </html>

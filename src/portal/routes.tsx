@@ -13,6 +13,7 @@ import {
   type Viewer,
 } from '../lib/types';
 import {api, read} from './api';
+import {Button, Field, rules, useForm} from './ui';
 
 /**
  * The portal's screens: a TanStack Router app under `/portal` (basepath),
@@ -111,6 +112,8 @@ const rootRoute = createRootRoute({
     const site = useSite();
     const title = useScreenTitle();
     const [open, setOpen] = useState(false);
+    // `logout()` reloads the page when it is done, so pending never needs resetting.
+    const [signingOut, setSigningOut] = useState(false);
     const viewer = me.data?.viewer;
     const abilities = me.data?.abilities;
     return (
@@ -169,9 +172,17 @@ const rootRoute = createRootRoute({
                     Preview
                   </span>
                 ) : (
-                  <button type="button" className="button link small-button" onClick={() => void logout()}>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    pending={signingOut}
+                    pendingLabel="Signing out…"
+                    onClick={() => {
+                      setSigningOut(true);
+                      void logout();
+                    }}>
                     Sign out
-                  </button>
+                  </Button>
                 )}
               </div>
             )}
@@ -379,7 +390,12 @@ const uploadsRoute = createRoute({
             work on your live site, not in the editor preview.
           </p>
         ) : (
-          <label className="button upload-button">
+          // A file picker needs a <label>; it follows the same busy rules as <Button>.
+          <label
+            className="button upload-button"
+            aria-busy={add.isPending || undefined}
+            aria-disabled={add.isPending || undefined}>
+            {add.isPending && <span className="spinner" aria-hidden="true" />}
             {add.isPending ? 'Uploading…' : 'Upload a file'}
             <input type="file" onChange={pick} disabled={add.isPending} hidden />
           </label>
@@ -409,12 +425,13 @@ const uploadsRoute = createRoute({
           ))}
         </ul>
         {uploads.hasNextPage && (
-          <button
-            className="button ghost"
+          <Button
+            variant="ghost"
             onClick={() => uploads.fetchNextPage()}
-            disabled={uploads.isFetchingNextPage}>
+            pending={uploads.isFetchingNextPage}
+            pendingLabel="Loading…">
             Load more
-          </button>
+          </Button>
         )}
       </div>
     );
@@ -448,14 +465,20 @@ const membersRoute = createRoute({
         <p className="muted">Read by this site's server with the Community Key.</p>
         <form className="search" onSubmit={submit}>
           <input
+            type="search"
+            aria-label="Search members by name"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by name"
             maxLength={50}
           />
-          <button className="button ghost" type="submit">
+          <Button
+            variant="ghost"
+            type="submit"
+            pending={members.isFetching && !members.isFetchingNextPage}
+            pendingLabel="Searching…">
             Search
-          </button>
+          </Button>
         </form>
         {members.error && <ErrorNote error={members.error} />}
         {rows.length === 0 && members.isSuccess && <p className="muted">No members found.</p>}
@@ -471,12 +494,13 @@ const membersRoute = createRoute({
           ))}
         </ul>
         {members.hasNextPage && (
-          <button
-            className="button ghost"
+          <Button
+            variant="ghost"
             onClick={() => members.fetchNextPage()}
-            disabled={members.isFetchingNextPage}>
+            pending={members.isFetchingNextPage}
+            pendingLabel="Loading…">
             Load more
-          </button>
+          </Button>
         )}
       </div>
     );
@@ -493,6 +517,23 @@ const EMPTY_JOB = {
   applyUrl: '',
 };
 
+/** The job form's rules: the SAME limits `src/server/routes/jobs.ts` enforces. */
+const JOB_RULES = {
+  title: [rules.required('Enter a title.'), rules.maxLength(120)],
+  company: [rules.required('Enter the company.'), rules.maxLength(80)],
+  location: [rules.required('Enter a location, or "Anywhere".'), rules.maxLength(80)],
+  description: [
+    rules.required('Describe the job.'),
+    rules.minLength(20, 'Write at least 20 characters so applicants know what it is.'),
+    rules.maxLength(10000),
+  ],
+  applyUrl: [
+    rules.required('Add where to apply.'),
+    rules.pattern(/^(https:\/\/|mailto:)\S+$/i, 'Use an https:// link or a mailto: address.'),
+    rules.maxLength(500),
+  ],
+};
+
 /** Site admins: post, edit, close and delete jobs (`/site-api/jobs`, `MANAGE_JOBS`). */
 const jobsRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -500,7 +541,7 @@ const jobsRoute = createRoute({
   component: function Jobs() {
     const queryClient = useQueryClient();
     const [editing, setEditing] = useState<number | 'new' | null>(null);
-    const [form, setForm] = useState(EMPTY_JOB);
+    const form = useForm(EMPTY_JOB, JOB_RULES);
     const jobs = useInfiniteQuery({
       queryKey: ['jobs', 'manage'],
       initialPageParam: undefined as string | undefined,
@@ -508,14 +549,35 @@ const jobsRoute = createRoute({
       getNextPageParam: last => (last.nextBefore ? String(last.nextBefore) : undefined),
     });
     const refresh = () => queryClient.invalidateQueries({queryKey: ['jobs']});
+    const close = () => {
+      setEditing(null);
+      form.reset();
+    };
     const save = useMutation({
-      mutationFn: () =>
+      mutationFn: (values: typeof EMPTY_JOB) =>
         editing === 'new'
-          ? read<{job: Job}>(api.jobs.$post({json: form}))
-          : read<{job: Job}>(api.jobs[':id'].$patch({param: {id: String(editing)}, json: form})),
+          ? read<{job: Job}>(api.jobs.$post({json: values}))
+          : read<{job: Job}>(api.jobs[':id'].$patch({param: {id: String(editing)}, json: values})),
       onSuccess: () => {
-        setEditing(null);
+        close();
         return refresh();
+      },
+    });
+    const open = useMutation({
+      mutationFn: (id: number) =>
+        read<{job: Job}>(api.jobs.manage[':id'].$get({param: {id: String(id)}})),
+      onSuccess: ({job}, id) => {
+        form.reset({
+          title: job.title,
+          company: job.company,
+          location: job.location,
+          type: job.type,
+          remote: job.remote,
+          description: job.description,
+          applyUrl: job.applyUrl,
+        });
+        save.reset();
+        setEditing(id);
       },
     });
     const setStatus = useMutation({
@@ -527,25 +589,12 @@ const jobsRoute = createRoute({
       mutationFn: (id: number) => read(api.jobs[':id'].$delete({param: {id: String(id)}})),
       onSuccess: refresh,
     });
-    const edit = async (id: number) => {
-      const {job} = await read<{job: Job}>(api.jobs.manage[':id'].$get({param: {id: String(id)}}));
-      setForm({
-        title: job.title,
-        company: job.company,
-        location: job.location,
-        type: job.type,
-        remote: job.remote,
-        description: job.description,
-        applyUrl: job.applyUrl,
-      });
-      setEditing(id);
-    };
-    const field = (key: keyof typeof EMPTY_JOB) => (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-      setForm(current => ({...current, [key]: key === 'remote' ? (event.target as HTMLInputElement).checked : event.target.value}));
-    const submit = (event: FormEvent) => {
-      event.preventDefault();
-      save.mutate();
-    };
+    // Which ROW is busy: only that row's buttons show it, and the row cannot be acted on twice.
+    const busyId =
+      (open.isPending && open.variables) ||
+      (setStatus.isPending && setStatus.variables?.id) ||
+      (remove.isPending && remove.variables) ||
+      null;
     const rows = jobs.data?.pages.flatMap(page => page.jobs) ?? [];
 
     return (
@@ -553,9 +602,14 @@ const jobsRoute = createRoute({
         <div className="app-page-head">
           <h2>Jobs</h2>
           {editing === null && (
-            <button className="button" onClick={() => (setForm(EMPTY_JOB), setEditing('new'))}>
+            <Button
+              onClick={() => {
+                form.reset();
+                save.reset();
+                setEditing('new');
+              }}>
               Post a job
-            </button>
+            </Button>
           )}
         </div>
         <p className="muted">
@@ -563,73 +617,128 @@ const jobsRoute = createRoute({
         </p>
 
         {editing !== null && (
-          <form className="form wide" onSubmit={submit}>
-            <h2>{editing === 'new' ? 'New job' : 'Edit job'}</h2>
-            <input value={form.title} onChange={field('title')} placeholder="Title" maxLength={120} required />
-            <div className="row">
-              <input value={form.company} onChange={field('company')} placeholder="Company" maxLength={80} required />
-              <input value={form.location} onChange={field('location')} placeholder="Location" maxLength={80} required />
-            </div>
-            <div className="row">
-              <select value={form.type} onChange={field('type')} aria-label="Job type">
-                {JOB_TYPES.map(type => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-              <label className="check">
-                <input type="checkbox" checked={form.remote} onChange={field('remote')} /> Remote
+          <form className="app-card form-card" onSubmit={form.submit(values => save.mutate(values))} noValidate>
+            <h3>{editing === 'new' ? 'New job' : 'Edit job'}</h3>
+            <div className="form-grid">
+              <Field id="f-title" label="Title" error={form.error('title')}>
+                <input {...form.field('title')} autoComplete="off" />
+              </Field>
+              <Field id="f-company" label="Company" error={form.error('company')}>
+                <input {...form.field('company')} autoComplete="organization" />
+              </Field>
+              <Field id="f-location" label="Location" error={form.error('location')}>
+                <input {...form.field('location')} />
+              </Field>
+              <Field id="f-type" label="Job type">
+                <select {...form.field('type')}>
+                  {JOB_TYPES.map(type => (
+                    <option key={type} value={type}>
+                      {type}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <label className="check full">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.values.remote)}
+                  onChange={event => form.set('remote', event.target.checked)}
+                />{' '}
+                Remote
               </label>
-            </div>
-            <textarea value={form.description} onChange={field('description')} placeholder="Description (blank line between paragraphs)" minLength={20} maxLength={10000} rows={8} required />
-            <input value={form.applyUrl} onChange={field('applyUrl')} placeholder="Apply link: https://… or mailto:…" maxLength={500} required />
-            <div className="actions">
-              <button className="button" type="submit" disabled={save.isPending}>
-                {save.isPending ? 'Saving…' : 'Save'}
-              </button>
-              <button className="button ghost" type="button" onClick={() => setEditing(null)}>
-                Cancel
-              </button>
+              <div className="full">
+                <Field
+                  id="f-description"
+                  label="Description"
+                  hint="Leave a blank line between paragraphs."
+                  error={form.error('description')}>
+                  <textarea {...form.field('description')} rows={8} />
+                </Field>
+              </div>
+              <div className="full">
+                <Field
+                  id="f-applyUrl"
+                  label="Apply link"
+                  hint="An https:// link or a mailto: address."
+                  error={form.error('applyUrl')}>
+                  <input {...form.field('applyUrl')} inputMode="url" />
+                </Field>
+              </div>
             </div>
             {save.error && <ErrorNote error={save.error} />}
+            <div className="actions">
+              <Button type="submit" pending={save.isPending} pendingLabel="Saving…">
+                {editing === 'new' ? 'Post job' : 'Save changes'}
+              </Button>
+              <Button variant="ghost" onClick={close} disabled={save.isPending}>
+                Cancel
+              </Button>
+            </div>
           </form>
         )}
 
         {jobs.error && <ErrorNote error={jobs.error} />}
-        {rows.length === 0 && jobs.isSuccess && <p className="muted">No jobs yet.</p>}
+        {jobs.isPending && <p className="muted">Loading…</p>}
+        {rows.length === 0 && jobs.isSuccess && (
+          <div className="app-empty">
+            <p className="muted">No jobs yet.</p>
+          </div>
+        )}
         <ul className="files">
-          {rows.map(job => (
-            <li key={job.id}>
-              <div>
-                <a href={`/jobs/${encodeURIComponent(job.slug)}`}>{job.title}</a>
-                <span className="meta">
-                  {job.company} · {job.location} · {job.status}
-                </span>
-              </div>
-              <div className="row-actions">
-                <button className="button link small-button" onClick={() => void edit(job.id)}>
-                  Edit
-                </button>
-                <button
-                  className="button link small-button"
-                  onClick={() => setStatus.mutate({id: job.id, status: job.status === 'open' ? 'closed' : 'open'})}>
-                  {job.status === 'open' ? 'Close' : 'Reopen'}
-                </button>
-                <button
-                  className="button link small-button"
-                  onClick={() => window.confirm(`Delete “${job.title}”?`) && remove.mutate(job.id)}>
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
+          {rows.map(job => {
+            const busy = busyId === job.id;
+            return (
+              <li key={job.id} aria-busy={busy || undefined}>
+                <div>
+                  <a href={`/jobs/${encodeURIComponent(job.slug)}`}>{job.title}</a>
+                  <span className="meta">
+                    {job.company} · {job.location} · {job.status}
+                  </span>
+                </div>
+                <div className="row-actions">
+                  <Button
+                    variant="link"
+                    size="sm"
+                    pending={open.isPending && open.variables === job.id}
+                    pendingLabel="Opening…"
+                    disabled={busy || save.isPending}
+                    onClick={() => open.mutate(job.id)}>
+                    Edit
+                  </Button>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    pending={setStatus.isPending && setStatus.variables?.id === job.id}
+                    pendingLabel={job.status === 'open' ? 'Closing…' : 'Reopening…'}
+                    disabled={busy}
+                    onClick={() => setStatus.mutate({id: job.id, status: job.status === 'open' ? 'closed' : 'open'})}>
+                    {job.status === 'open' ? 'Close' : 'Reopen'}
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    pending={remove.isPending && remove.variables === job.id}
+                    pendingLabel="Deleting…"
+                    disabled={busy}
+                    onClick={() => window.confirm(`Delete “${job.title}”?`) && remove.mutate(job.id)}>
+                    Delete
+                  </Button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
-        {(setStatus.error || remove.error) && <ErrorNote error={(setStatus.error ?? remove.error)!} />}
+        {(open.error || setStatus.error || remove.error) && (
+          <ErrorNote error={(open.error ?? setStatus.error ?? remove.error)!} />
+        )}
         {jobs.hasNextPage && (
-          <button className="button ghost" onClick={() => jobs.fetchNextPage()} disabled={jobs.isFetchingNextPage}>
+          <Button
+            variant="ghost"
+            onClick={() => jobs.fetchNextPage()}
+            pending={jobs.isFetchingNextPage}
+            pendingLabel="Loading…">
             Load more
-          </button>
+          </Button>
         )}
       </div>
     );

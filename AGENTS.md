@@ -244,6 +244,44 @@ Hard rules:
 - Never mix: an SSR or static page does not host app screens, and an app
   does not render public SEO content.
 
+## Machine limits: never overload the editor (NON-NEGOTIABLE)
+
+You run in the editor's sandbox: **2 vCPU and 4 GB RAM in total**, shared with
+the Preview dev server (`npm run dev`) the owner is looking at. If you exhaust
+it, the Preview freezes, the sandbox gets killed, and the owner loses the
+session. Keep it in check:
+
+- **Check before heavy work, and when anything feels slow**: `free -m`
+  (memory), `uptime` (load; above ~2 means the CPUs are full),
+  `ps aux --sort=-%mem | head -8` (what is eating memory). If free memory is
+  under ~500 MB or load stays above 2, stop and clean up before going on.
+- **ONE dev server, ever.** The editor already runs it: never start another
+  `npm run dev` / `astro dev` / `vite`, and never `npm run preview`. Before
+  starting anything long-lived, check it is not already running
+  (`ps aux | grep -E "astro|vite|node" | grep -v grep`).
+- **Kill what you start.** Every background process you launch (a test
+  server, a watcher, `prisma studio`) is stopped as soon as you have your
+  answer. Never leave watchers (`--watch`, `tsc -w`, `vitest` in watch mode)
+  running; run checks once (`vitest run`, `tsc --noEmit`).
+- **One heavy command at a time.** `npm install`, `npm run build`,
+  `prisma generate`, `astro check` and test runs never run in parallel with
+  each other. `npm run build` only when you need to prove the build; while
+  editing, the dev server is the check.
+- **Bound every command.** No unbounded `find /`, recursive `grep` over
+  `node_modules` or `.git`, or reading huge files whole: scope to `src/`,
+  use `head`/`tail`, limit results. Give long commands a timeout.
+- **Dependencies are a cost.** Add a package only when the platform or the
+  owner needs it; never a second copy of something already here (another UI
+  kit, date library, state manager). Big installs eat RAM and disk.
+- **If the dev server dies or the Preview freezes**: check memory first,
+  stop what you started, then let the editor restart the Preview. Do not
+  start your own.
+
+The deployed site has hard limits too (one Cloudflare Worker: 128 MB of
+memory per isolate and short CPU time per request): no unbounded loops or
+lists, no loading a whole table, no huge objects held in module memory,
+keyset paging everywhere (see the Site Database rules).
+
 ## A dashboard looks like a dashboard (app anatomy)
 
 A dashboard, admin area, CRM, portal or any internal tool is a REAL app UI,
@@ -269,7 +307,8 @@ Required, every time:
   (`.app-card`), lists as tables (`.app-table`) or rows, and all three states
   handled: loading, empty (`.app-empty` with a call to action), error.
 - **Forms** sit in a card or a drawer on the screen; saving shows the result
-  in place (a toast or the updated row), never a page load.
+  in place (a toast or the updated row), never a page load. Buttons and
+  fields follow "Buttons and forms" below, with no exceptions.
 - **Numbers come cheap**: a tile reads the first page of a keyset list
   ("20+", see `pageCount`) or a counter kept in the Site Database on write.
   NEVER a `count()` / aggregate over a growing table per request.
@@ -281,6 +320,68 @@ full-page centered narrow column, or one `.astro` page per screen.
 Styling: extend the `app-*`, `stat-*` classes and the colour tokens in
 `src/styles/global.css` (light and dark flip together). A UI library is
 fine if the owner asks for one; the anatomy above still applies.
+
+## Buttons and forms (NON-NEGOTIABLE, every page, every time)
+
+These two rules apply to EVERY button and EVERY form field you write, in the
+app AND on the website, new or edited. Breaking them is a bug, not a style
+choice. The reference is `src/portal/ui.tsx` (`Button`, `Field`, `useForm`,
+`rules`) and the jobs screen in `src/portal/routes.tsx`: use them in React;
+mirror them exactly in an `.astro` page's script.
+
+### 1. Every button has proper states
+
+- **Pending**: while its action runs (a save, a delete, a fetch, an upload,
+  sign out, "Load more"), the button shows a spinner AND a present-tense
+  label ("Saving…", "Deleting…", "Loading…"), has `aria-busy="true"`, and
+  is `disabled` so a second click can never send twice.
+  React: `<Button pending={mutation.isPending} pendingLabel="Saving…">`.
+- **Disabled** when it cannot act (nothing to save, a required choice not
+  made, another action on the same row running), visibly dimmed with
+  `cursor: not-allowed`. Never a button that silently does nothing.
+- **Per row**: in a list, only the row being acted on shows pending, and that
+  row's other buttons are disabled while it runs (see `busyId` in the jobs
+  screen). Never one global spinner that freezes the whole list.
+- **Done**: on success the result shows in place (row updated, form closed,
+  toast); on failure the error shows next to the action, in words, and the
+  button is usable again. Never leave a button stuck pending.
+- **Destructive** actions (delete, remove, revoke) use the `danger` variant
+  and ask for confirmation first.
+- `type="button"` unless it submits the form (`<Button>` defaults to it).
+  Every button has a visible focus ring; an icon-only button has an
+  `aria-label`.
+- A search / filter form that navigates (GET) shows its button busy until
+  the next page loads (`Base.astro` does it for every GET form).
+
+### 2. Every form field validates IN PLACE, never with browser bubbles
+
+- **`noValidate` on every form** (`novalidate` in `.astro`). NEVER rely on
+  `required`, `minLength`, `pattern`, `type="email"` popups: the browser's
+  bubbles are ugly, inconsistent and not translatable. Validate in code
+  with pure rules (`rules.required`, `rules.maxLength`, `rules.email`,
+  `rules.pattern` …) through `useForm`.
+- **Every field has a visible `<label>`** (`<Field label="…">`). A
+  placeholder is an example ("name@example.com"), never the label.
+- **The error shows under its field, in words**, saying how to fix it
+  ("Use an https:// link or a mailto: address.", not "Invalid"). The field
+  gets `aria-invalid="true"` and `aria-describedby` pointing at the message;
+  the border turns `--danger`.
+- **Timing**: an error appears when the visitor LEAVES the field (blur) or
+  presses submit, never while they type their first value; once shown it
+  updates on every keystroke and disappears the moment the value is right.
+- **Submit** validates every field, shows every error at once, focuses the
+  first wrong field, and sends NOTHING until all pass. While sending, the
+  submit button is pending (rule 1) and Cancel is disabled.
+- **The same limits as the server**: the client rules mirror the Site API
+  route's validation exactly (`JOB_RULES` ↔ `src/server/routes/jobs.ts`).
+  The server always checks again; a server error is shown on the form, next
+  to the field it names when it names one, never as an `alert()`.
+- Hints that help before an error (format, limits) go in `hint`, shown
+  under the field until it has an error.
+
+Never: an `alert()` for validation, a red message at the top of the page for
+a field's problem, clearing what the visitor typed after an error, or a
+form that submits with a field still wrong.
 
 ## Recipes
 
