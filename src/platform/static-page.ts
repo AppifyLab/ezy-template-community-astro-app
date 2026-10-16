@@ -101,7 +101,12 @@ async function hydrateSession(): Promise<void> {
     button.type = 'button';
     button.className = 'button link small-button';
     button.textContent = 'Sign out';
-    button.addEventListener('click', () => void logout());
+    button.addEventListener('click', () => {
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      button.textContent = 'Signing out…';
+      void logout();
+    });
     session.append(button);
   }
 }
